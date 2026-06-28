@@ -1,7 +1,6 @@
 import csv
 import logging
 import re
-import uuid
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -9,6 +8,7 @@ from typing import List, Optional, Tuple
 
 from app.providers.base_provider import BaseProvider
 from app.models.listing import Listing
+from app.utils.formatting import make_listing_id
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,9 @@ _COLUMN_ALIASES: dict[str, list[str]] = {
     "location":     ["location", "ville", "city", "departement", "département", "lieu"],
     "id":           ["id", "identifiant", "ref", "reference", "référence"],
     "source":       ["source", "origine", "plateforme"],
+    "title":        ["title", "titre", "intitule", "intitulé", "annonce", "sujet"],
+    "url":          ["url", "lien", "link", "adresse", "href"],
+    "published_at": ["published_at", "date", "date_publication", "date_annonce", "publie_le", "publié_le"],
 }
 
 _REQUIRED_FIELDS = {"brand", "model", "year", "mileage", "price"}
@@ -292,7 +295,7 @@ class CsvProvider(BaseProvider):
                 continue
 
             listings.append(Listing(
-                id=parsed.get("id") or str(uuid.uuid4()),
+                id=parsed["id"],
                 brand=parsed["brand"].strip().title(),
                 model=parsed["model"].strip(),
                 year=parsed["year"],
@@ -302,6 +305,9 @@ class CsvProvider(BaseProvider):
                 transmission=parsed.get("transmission", ""),
                 location=parsed.get("location", "").strip(),
                 source=parsed.get("source", "csv"),
+                title=parsed.get("title", ""),
+                url=parsed.get("url", ""),
+                published_at=parsed.get("published_at", ""),
             ))
             report.valid_rows += 1
 
@@ -349,8 +355,22 @@ class CsvProvider(BaseProvider):
 
         parsed["location"] = raw.get("location", "").strip()
         parsed["source"] = raw.get("source", "csv").strip() or "csv"
+        parsed["title"] = raw.get("title", "").strip()
+        parsed["url"] = raw.get("url", "").strip()
+        parsed["published_at"] = raw.get("published_at", "").strip()
 
         raw_id = raw.get("id", "").strip()
-        parsed["id"] = raw_id if raw_id else str(uuid.uuid4())
+        if not raw_id:
+            raw_id = make_listing_id(
+                url=parsed.get("url", ""),
+                brand=parsed.get("brand", ""),
+                model=parsed.get("model", ""),
+                year=parsed.get("year", 0),
+                mileage=parsed.get("mileage", 0),
+                price=parsed.get("price", 0.0),
+                location=parsed.get("location", ""),
+                title=parsed.get("title", ""),
+            )
+        parsed["id"] = raw_id
 
         return parsed

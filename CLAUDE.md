@@ -118,6 +118,9 @@ LCB_price_analyser/
 | 2026-06-27 | Pas de base de données en v1 | MVP — données en mémoire suffisantes pour valider le concept |
 | 2026-06-27 | Score basé sur ratio prix/médiane | Simple, lisible, sans dépendance externe |
 | 2026-06-27 | MockProvider avec seed fixe | Reproductibilité des données de test |
+| 2026-06-27 | PiloterrProvider implémenté avec dry_run | Source réelle LBC via Piloterr API ; fallback MockProvider si clé absente |
+| 2026-06-27 | IDs déterministes via SHA-256 | Évite les doublons en base de données ; même annonce = même ID quel que soit le run |
+| 2026-06-27 | Listing enrichi : title, url, published_at | Prépare l'affichage des vraies annonces et l'intégration PiloterrProvider |
 | 2026-06-27 | CsvProvider professionnel — réécriture complète | Détection automatique des colonnes, normalisation des formats, rapport d'import, gestion encodages |
 | 2026-06-27 | Audit critique MVP — 6 correctifs appliqués | Robustesse, sécurité et exactitude avant v2 |
 | 2026-06-27 | CsvProvider : gestion complète des erreurs | Fichier absent / colonnes manquantes / lignes invalides ignorées sans crash |

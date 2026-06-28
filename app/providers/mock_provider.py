@@ -1,8 +1,8 @@
 import random
-import uuid
 from typing import List
 from app.providers.base_provider import BaseProvider
 from app.models.listing import Listing
+from app.utils.formatting import make_listing_id
 
 _BRANDS = {
     "Renault": ["Clio", "Megane", "Captur", "Zoe"],
@@ -48,17 +48,29 @@ class MockProvider(BaseProvider):
             price = max(1500, price * rng.uniform(0.80, 1.20))
             price = round(price / 100) * 100
 
+            fuel = rng.choice(_FUELS)
+            transmission = rng.choice(_TRANSMISSIONS)
+            location = rng.choice(_LOCATIONS)
+            title = f"{brand} {model} {year} — {mileage:,} km — {int(price):,} €".replace(",", " ")
+            listing_id = make_listing_id(
+                brand=brand, model=model, year=year,
+                mileage=mileage, price=price, location=location, title=title,
+            )
+
             listings.append(Listing(
-                id=str(uuid.uuid4()),
+                id=listing_id,
                 brand=brand,
                 model=model,
                 year=year,
                 mileage=mileage,
                 price=price,
-                fuel=rng.choice(_FUELS),
-                transmission=rng.choice(_TRANSMISSIONS),
-                location=rng.choice(_LOCATIONS),
+                fuel=fuel,
+                transmission=transmission,
+                location=location,
                 source="mock",
+                title=title,
+                url=f"https://mock.example.com/annonces/{listing_id}",
+                published_at="",
             ))
 
         return listings

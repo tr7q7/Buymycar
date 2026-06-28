@@ -13,5 +13,8 @@ class Listing:
     fuel: str           # essence, diesel, electrique, hybride
     transmission: str   # manuelle, automatique
     location: str
-    source: str         # csv, mock, api...
-    score: Optional[float] = field(default=None)  # score bonne affaire, calculé a posteriori
+    source: str         # csv, mock, piloterr-leboncoin...
+    score: Optional[float] = field(default=None)   # score bonne affaire, calculé a posteriori
+    title: str = field(default="")                 # titre de l'annonce
+    url: str = field(default="")                   # lien vers l'annonce originale
+    published_at: str = field(default="")          # date de publication (ISO 8601 ou chaîne brute)

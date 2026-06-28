@@ -14,7 +14,11 @@ from app.utils.formatting import make_listing_id
 logger = logging.getLogger(__name__)
 
 _API_BASE = "https://piloterr.com/api/v2/leboncoin/search"
-_TIMEOUT = 10        # secondes
+
+# Piloterr attend un paramètre `query` contenant une URL LeBonCoin complète.
+# Les filtres (marque, prix…) sont encodés directement dans cette URL LBC,
+# pas en paramètres Piloterr séparés.
+_TIMEOUT = 60        # secondes
 _MAX_RETRIES = 1
 _RETRY_DELAY = 2     # secondes
 
@@ -85,27 +89,17 @@ class SearchParams:
     location: Optional[str] = None
     limit: int = 50
 
-    def to_query_params(self) -> dict:
-        params: dict = {"brand": self.brand, "limit": self.limit}
-        if self.model:
-            params["model"] = self.model
-        if self.year_min:
-            params["regdate_min"] = self.year_min
-        if self.year_max:
-            params["regdate_max"] = self.year_max
-        if self.mileage_max:
-            params["mileage_max"] = self.mileage_max
-        if self.price_min:
-            params["price_min"] = int(self.price_min)
-        if self.price_max:
-            params["price_max"] = int(self.price_max)
-        if self.fuel:
-            params["fuel"] = self.fuel
-        if self.transmission:
-            params["gearbox"] = self.transmission
-        if self.location:
-            params["locations"] = self.location
-        return params
+    def to_query_params(self, lbc_url: str) -> dict:
+        """
+        Construit les paramètres Piloterr.
+
+        Piloterr attend l'URL LeBonCoin complète dans `query`.
+        Les filtres sont encodés directement dans cette URL, pas ici.
+        """
+        return {
+            "query": lbc_url,
+            "return_page_source": "false",
+        }
 
 
 @dataclass
@@ -139,8 +133,9 @@ class PiloterrProvider(BaseProvider):
     Si dry_run=True et que la clé est absente, délègue à MockProvider.
     """
 
-    def __init__(self, search_params: SearchParams, dry_run: bool = False):
+    def __init__(self, search_params: SearchParams, lbc_url: str = "", dry_run: bool = False):
         self.search_params = search_params
+        self.lbc_url = lbc_url  # URL LeBonCoin complète à passer à Piloterr
         self.dry_run = dry_run
         self._api_key = self._load_api_key()
 
@@ -176,7 +171,11 @@ class PiloterrProvider(BaseProvider):
             "x-api-key": self._api_key,
             "Content-Type": "application/json",
         }
-        params = self.search_params.to_query_params()
+        if not self.lbc_url:
+            raise PiloterrConfigError(
+                "lbc_url est requis. Fournissez une URL LeBonCoin complète à PiloterrProvider."
+            )
+        params = self.search_params.to_query_params(self.lbc_url)
         last_error: Exception = PiloterrError("Erreur inconnue")
 
         for attempt in range(_MAX_RETRIES + 1):
@@ -237,9 +236,9 @@ class PiloterrProvider(BaseProvider):
         if not isinstance(data, dict):
             raise PiloterrParseError("La réponse n'est pas un objet JSON")
 
-        raw_list = data.get("data", [])
+        raw_list = data.get("ads", [])
         if not isinstance(raw_list, list):
-            raise PiloterrParseError("Clé 'data' absente ou non-liste dans la réponse")
+            raise PiloterrParseError("Clé 'ads' absente ou non-liste dans la réponse")
 
         listings: List[Listing] = []
         skipped = 0
@@ -250,7 +249,7 @@ class PiloterrProvider(BaseProvider):
                 listings.append(listing)
             except Exception as e:
                 skipped += 1
-                logger.debug("Annonce ignorée au parsing : %s — %s", item.get("id", "?"), e)
+                logger.debug("Annonce ignorée au parsing : %s — %s", item.get("list_id", "?"), e)
 
         if skipped:
             logger.info("%d annonce(s) ignorée(s) sur %d au parsing", skipped, skipped + len(listings))
@@ -259,8 +258,16 @@ class PiloterrProvider(BaseProvider):
 
     @staticmethod
     def _map_item(item: dict) -> Listing:
-        attrs = item.get("attributes") or {}
+        # Construire un index {key: attribute} depuis la liste attributes
+        raw_attrs = item.get("attributes") or []
+        attrs = {a["key"]: a for a in raw_attrs if isinstance(a, dict) and "key" in a}
         loc = item.get("location") or {}
+
+        def attr_value(key: str) -> str:
+            return str(attrs[key]["value"]).strip() if key in attrs else ""
+
+        def attr_label(key: str) -> str:
+            return str(attrs[key].get("value_label", attrs[key]["value"])).strip() if key in attrs else ""
 
         # ── Champs obligatoires ───────────────────────────────────────────────
         price_list = item.get("price") or []
@@ -268,37 +275,37 @@ class PiloterrProvider(BaseProvider):
             raise ValueError("Prix absent")
         price = float(price_list[0])
 
-        regdate = attrs.get("regdate", "")
+        regdate = attr_value("regdate")
         if not regdate:
             raise ValueError("Date d'immatriculation absente")
         year = int(str(regdate)[:4])
 
-        mileage_raw = attrs.get("mileage")
-        if mileage_raw is None:
+        mileage_raw = attr_value("mileage")
+        if not mileage_raw:
             raise ValueError("Kilométrage absent")
         mileage = int(mileage_raw)
 
-        brand = (attrs.get("brand") or "").strip()
+        brand = attr_value("brand")
         if not brand:
             raise ValueError("Marque absente")
 
-        model = (attrs.get("model") or "").strip()
+        model = attr_value("model")
 
         # ── Champs optionnels ─────────────────────────────────────────────────
-        fuel = _norm(attrs.get("fuel") or "", _FUEL_MAP)
-        transmission = _norm(attrs.get("gearbox") or "", _TRANSMISSION_MAP)
-        location = (loc.get("city") or loc.get("department_id") or "").strip()
+        # fuel et gearbox : value_label contient le libellé lisible ("Hybride", "Automatique")
+        fuel = _norm(attr_label("fuel"), _FUEL_MAP)
+        transmission = _norm(attr_label("gearbox"), _TRANSMISSION_MAP)
+        location = (loc.get("city") or loc.get("department_name") or "").strip()
         title = (item.get("subject") or "").strip()
         url = (item.get("url") or "").strip()
         published_at = (item.get("first_publication_date") or "").strip()
-        source_id = str(item.get("id") or "")
 
-        listing_id = make_listing_id(
-            url=url,
-            brand=brand, model=model, year=year,
-            mileage=mileage, price=price,
-            location=location, title=title,
-        ) if not source_id else source_id
+        # list_id est l'identifiant LBC natif — stable et unique
+        list_id = str(item.get("list_id") or "").strip()
+        listing_id = list_id if list_id else make_listing_id(
+            url=url, brand=brand, model=model, year=year,
+            mileage=mileage, price=price, location=location, title=title,
+        )
 
         return Listing(
             id=listing_id,

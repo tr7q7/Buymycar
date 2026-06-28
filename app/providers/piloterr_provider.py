@@ -8,6 +8,7 @@ import requests
 
 from app.models.listing import Listing
 from app.providers.base_provider import BaseProvider
+from app.providers.provider_registry import register_provider
 from app.utils.formatting import make_listing_id
 
 logger = logging.getLogger(__name__)
@@ -129,6 +130,7 @@ class PiloterrMeta:
 
 # ── Provider ──────────────────────────────────────────────────────────────────
 
+@register_provider("piloterr")
 class PiloterrProvider(BaseProvider):
     """
     Provider Piloterr — récupère des annonces LeBonCoin via l'API Piloterr.

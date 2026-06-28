@@ -1,0 +1,20 @@
+marque,modèle,année,kilométrage,prix,carburant,boîte,ville
+Renault,Clio,2019,"45 000 km","9 500 €",Essence,Manuelle,Lyon
+Peugeot,308,01/2020,"32 000 km","12 900 €",Diesel,Manuelle,Paris
+Volkswagen,Golf,2018,"78.500 km","14.500 €",Essence,BVA,Bordeaux
+BMW,Série 3,2021,"15 000 km","28 900 €",Diesel,Automatique,Lille
+Toyota,Yaris,2017-06-01,"92 000 km","8 750 €",Essence,Manuelle,Nantes
+Renault,Megane,2016,"110 000 km","7 200 €",Diesel,Manuelle,Toulouse
+Peugeot,3008,2022,"12 500 km","29 500 €",Hybride rechargeable,Automatique,Lyon
+Volkswagen,Polo,2015,"143,000 km","6 900 €",SP95,BVM,Marseille
+Toyota,RAV4,2020,"38 000 km","31 200 €",Hybride,CVT,Strasbourg
+BMW,Série 1,2019,"55 000 km","22 400 €",Diesel,DSG,Paris
+,Clio,2020,"30 000 km","10 500 €",Essence,Manuelle,Lyon
+Renault,Zoe,2021,"28 000 km",sur demande,Électrique,Automatique,Nantes
+Ford,Focus,1985,"60 000 km","5 500 €",Essence,Manuelle,Rennes
+Peugeot,208,2023,"-5 000 km","15 800 €",Essence,Manuelle,Paris
+Mercedes,Classe A,2020,"40 000 km","750 000 €",Essence,Automatique,Monaco
+Renault,Captur,2018,"67 000 km","11 300 €",Diesel,Manuelle,Grenoble
+Volkswagen,Tiguan,03/2021,"29 500 km","33 800 €",Diesel,DSG,Bordeaux
+Toyota,CH-R,2019,"51 000 km","19 900 €",Hybride,Auto,Toulouse
+Peugeot,508,2020,,,"Diesel",Automatique,Paris

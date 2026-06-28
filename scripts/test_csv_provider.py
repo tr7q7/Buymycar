@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.providers.csv_provider import CsvProvider
 
-CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "raw" / "test_annonces_sales.csv"
+CSV_PATH = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "csv" / "test_annonces_sales.csv"
 
 
 def main():

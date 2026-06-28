@@ -37,6 +37,8 @@ LCB_price_analyser/
 │   └── database/             ← persistance (v2)
 ├── exports/                  ← rapports générés
 ├── tests/
+│   └── fixtures/
+│       └── csv/            ← fichiers CSV de test (versionnés)
 ├── docs/
 ├── scripts/
 ├── requirements.txt
@@ -118,6 +120,8 @@ LCB_price_analyser/
 | 2026-06-27 | Pas de base de données en v1 | MVP — données en mémoire suffisantes pour valider le concept |
 | 2026-06-27 | Score basé sur ratio prix/médiane | Simple, lisible, sans dépendance externe |
 | 2026-06-27 | MockProvider avec seed fixe | Reproductibilité des données de test |
+| 2026-06-27 | Architecture plugin Provider — ProviderRegistry + auto-découverte | Ajouter un provider = créer un fichier, aucun autre fichier à modifier |
+| 2026-06-27 | Fixtures CSV déplacées dans tests/fixtures/csv/ | Sépare données de test (versionnées) et données utilisateur (data/raw/, ignoré git) |
 | 2026-06-27 | PiloterrProvider implémenté avec dry_run | Source réelle LBC via Piloterr API ; fallback MockProvider si clé absente |
 | 2026-06-27 | IDs déterministes via SHA-256 | Évite les doublons en base de données ; même annonce = même ID quel que soit le run |
 | 2026-06-27 | Listing enrichi : title, url, published_at | Prépare l'affichage des vraies annonces et l'intégration PiloterrProvider |

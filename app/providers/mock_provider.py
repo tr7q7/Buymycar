@@ -1,6 +1,7 @@
 import random
 from typing import List
 from app.providers.base_provider import BaseProvider
+from app.providers.provider_registry import register_provider
 from app.models.listing import Listing
 from app.utils.formatting import make_listing_id
 
@@ -26,6 +27,7 @@ _BASE_PRICE = {
 }
 
 
+@register_provider("mock")
 class MockProvider(BaseProvider):
     def __init__(self, n: int = 120, seed: int = 42):
         self.n = n

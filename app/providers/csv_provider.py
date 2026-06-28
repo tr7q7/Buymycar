@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from app.providers.base_provider import BaseProvider
+from app.providers.provider_registry import register_provider
 from app.models.listing import Listing
 from app.utils.formatting import make_listing_id
 
@@ -214,6 +215,7 @@ def _validate(listing_data: dict) -> Optional[str]:
 
 # ── Provider ──────────────────────────────────────────────────────────────────
 
+@register_provider("csv")
 class CsvProvider(BaseProvider):
     """
     Provider CSV universel.

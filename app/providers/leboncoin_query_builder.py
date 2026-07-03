@@ -75,6 +75,27 @@ class LeboncoinQueryBuilder:
 
         return _LBC_BASE + "?" + urlencode(query)
 
+    def build_brand_only(self) -> str:
+        """
+        URL avec la marque seule dans text= (sans modèle).
+
+        Utilisée comme recherche élargie quand brand+model donne trop peu de résultats.
+        Le filtrage sur le modèle est appliqué localement après réception.
+        """
+        p = self.params
+        query: dict[str, str] = {"category": _LBC_CATEGORY_VOITURES}
+        if p.brand:
+            query["text"] = p.brand.strip().lower()
+        if p.fuel:
+            code = _FUEL_CODES.get(p.fuel.strip().lower())
+            if code:
+                query["fuel"] = code
+        if p.transmission:
+            code = _GEARBOX_CODES.get(p.transmission.strip().lower())
+            if code:
+                query["gearbox"] = code
+        return _LBC_BASE + "?" + urlencode(query)
+
     def unsupported_filters(self) -> list[str]:
         """Liste les filtres de SearchParams qui ne peuvent pas être encodés dans l'URL LBC."""
         p = self.params

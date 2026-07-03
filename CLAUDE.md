@@ -30,11 +30,15 @@ LCB_price_analyser/
 │   ├── services/             ← orchestration (nettoyage, analyse)
 │   ├── analytics/            ← calculs statistiques purs
 │   ├── models/               ← entités de données
-│   └── utils/                ← fonctions transverses
+│   └── utils/
+│       ├── formatting.py     ← formatage prix/km/score
+│       └── car_catalog.py    ← chargement du catalogue marques/modèles
 ├── data/
 │   ├── raw/                  ← données brutes
 │   ├── processed/            ← données nettoyées
-│   └── database/             ← persistance (v2)
+│   ├── database/             ← persistance (v2)
+│   └── reference/
+│       └── car_catalog.json  ← catalogue marques/modèles (source de vérité)
 ├── exports/                  ← rapports générés
 ├── tests/
 │   └── fixtures/
@@ -133,3 +137,29 @@ LCB_price_analyser/
 | 2026-06-27 | Constantes SCORE_FLOOR_RATIO et SCORE_NEUTRAL extraites | Formule de scoring documentée et modifiable sans toucher à la logique |
 | 2026-06-27 | Correction donnée mock : "Peugeot 308" → "Zoe" sous Renault | Cohérence marque/modèle dans les données de test |
 | 2026-06-27 | random.Random(seed) isolé au lieu de random.seed() global | Supprime l'effet de bord sur le générateur aléatoire global Python |
+| 2026-06-28 | Menus déroulants marque/modèle dans Streamlit | Remplace les text_input libres ; modèles filtrés selon la marque choisie ; option "Autre" pour saisie manuelle |
+| 2026-06-28 | Catalogue véhicules dans data/reference/car_catalog.json | Source de vérité unique pour marques/modèles, chargée via app/utils/car_catalog.py |
+| 2026-06-28 | Slider Année min/max dans sidebar Piloterr (2000–année courante, défaut 2018–courante) | Transmis à SearchParams ; year_min/year_max non encodés dans URL LBC → filtrage local post-fetch |
+| 2026-06-28 | Hover riche sur graphique Plotly (titre, année, ville, carburant, boîte, URL) | Utilise hover_name + hover_data ; mileage/price exclus car déjà sur axes |
+| 2026-06-28 | Tableau Annonces avec titre et lien cliquable "Voir l'annonce" | Remplace l'ancien tableau ; lien visible uniquement quand url non vide (Piloterr) |
+| 2026-06-28 | Page résultat transformée en synthèse marché MVP vendable | KPIs 6 colonnes (+ indice fiabilité), section Interprétation (seuils ±15 % médian), Top bonnes affaires (top 5 par score) |
+| 2026-06-28 | Pagination Piloterr — jusqu'à 200 annonces (max_results) | Boucle sur `&page=N` dans l'URL LBC ; dédoublonnage par list_id ; arrêt si page incomplète, total atteint ou max_results ; crédits agrégés |
+| 2026-06-28 | Règle produit : max_results=200 fixe, non exposé en UI | Une analyse = un jeton = 200 annonces max automatiquement ; bandeau simplifié "X analysées sur Y disponibles" |
+| 2026-06-29 | MockProvider supprimé de l'interface Streamlit | Piloterr est la seule source UI ; MockProvider conservé en backend pour les tests scripts/ |
+| 2026-06-29 | Catalogue véhicules enrichi — 30 marques, 280+ modèles | Remplace l'ancien catalogue 9 marques ; couvre marques EU/JP/KR/US ; trié alphabétiquement |
+| 2026-06-29 | Carburant obligatoire pour Piloterr (HTTP 500 sans fuel) | URL sans fuel= provoque 500 côté Piloterr ; défaut Diesel ; validation bloquante si "Tous" |
+| 2026-06-29 | Carburants filtrés par marque/modèle en UI | app/utils/fuel_compat.py — structure de référence ; ne propose que les carburants plausibles (ex: Tesla=électrique seul, Ferrari=essence seul) ; fallback tous carburants si marque inconnue |
+| 2026-06-29 | Exclusion prix aberrants bas avant analyse | exclude_low_prices dans outlier_detector.py — exclut < 60 % médiane brute (véhicules accidentés, annonces atypiques) ; count affiché en warning dans l'UI |
+| 2026-06-29 | Échelle Y graphique intelligent (p3–p97 + marge 20 %) | Évite que les extrêmes écrasent la lecture ; spread minimum = 10 % du bas pour éviter le sur-zoom quand les prix sont très concentrés |
+| 2026-06-29 | Interaction graphique — clic sur point → carte annonce | streamlit-plotly-events remplace st.plotly_chart ; pointIndex → df.iloc[] → Listing ; carte avec image (images.small_url Piloterr), prix/année/km/ville, lien LBC ; sélection persistée en session_state[p_selected_point] |
+| 2026-06-29 | Listing.image_url ajouté | Champ optionnel mappé depuis images.small_url Piloterr (fallback images.urls[0]) ; 199/200 annonces ont une image |
+| 2026-06-29 | Filtrage progressif 3 niveaux — filtering_service.py | L1 strict (année exacte) → L2 (±1 an) → L3 (±1 an + modèle mot-à-mot) ; seuil 20 annonces par niveau ; jamais d'autre marque ni modèle non apparenté |
+| 2026-06-29 | Bannière enrichie + tableau annonces cliquables | Affiche X récupérées / Y strictes / Z retenues / niveau utilisé ; warnings contextuels par niveau ; tableau "Annonces utilisées" avec lien LBC cliquable sous graphique (expander) |
+| 2026-06-29 | Stratégie duale brand+model / brand-only | Si strict_count < 20 et model non vide : 2ème appel Piloterr avec brand seule, merge déduplication par id, re-filtrage progressif ; si merged > initial → strategy="elargie" affiché en bannière ; sinon stratégie standard conservée (pas de 2ème appel pour cas déjà suffisants) |
+| 2026-06-29 | Estimateur prix de marché pondéré — market_price_estimator.py | Pondération gaussienne w=exp(-(d_année²+d_km²)) autour du point médian ; intervalle = percentiles 25–75 pondérés ; confiance basée sur ESS et CV ; affiché comme section dédiée entre KPIs et analyse marché |
+| 2026-07-02 | Score de bonne affaire 0–100 — deal_scorer.py | Remplace le score 0-10 ; 3 composantes : prix vs marché estimé (60 pts), kilométrage (25 pts), année (15 pts) ; barème 90+ Excellente / 75+ Très intéressant / 55+ Prix correct / 35+ Peu intéressant / <35 Trop cher ; affiché dans hover graphique, tableau annonces, top bonnes affaires avec verdict |
+| 2026-07-02 | is_model_match() — fallback titre pour modèles sportifs | filtering_service.py : is_model_match() vérifie d'abord champ model LBC (struct), puis titre normalisé sans espaces/tirets ; corrige Audi RS3 encodé "a3" ou "rs_3" côté LBC ; même logique BMW M3, Golf GTI/R, Mercedes AMG, etc. ; 0 faux positif A3 standard, 0 autre marque |
+| 2026-07-02 | Catalogue enrichi — 60 marques, 856+ modèles | RS Q3, RS Q8, TT RS, R8 ajoutés à Audi ; catalogue de référence dans data/reference/car_catalog.json |
+| 2026-07-02 | fuel_compat.py — règles carburant par modèle enrichies | 80+ règles modèle : RS/S/TT Audi → essence seule ; BMW i*/iX → électrique ; BMW M → essence ; VW ID.* → électrique ; Tesla/BYD/Xpeng/Zeekr → électrique ; Porsche Taycan → électrique ; Ferrari/Lamborghini/McLaren → essence ; Mercedes EQ* → électrique ; Jaguar I-Pace → électrique, F-Type → essence ; 38 tests unitaires OK |
+| 2026-07-02 | Suppression section "Prix de marché estimé" | Section retirée de l'UI (valeur marché estimée, intervalle, confiance) ; le calcul reste disponible en backend via market_price_estimator.py (utilisé par deal_scorer) |
+| 2026-07-02 | Durée estimée de revente — resale_time_estimator.py | Fonction 3 MVP : estimation 7–90 jours basée sur liquidité du marché (nb annonces) et positionnement prix (mean/médian) ; confiance Élevée/Moyenne/Faible selon nb annonces et CV ; carte affichée entre KPIs et analyse marché |

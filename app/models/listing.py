@@ -18,3 +18,4 @@ class Listing:
     title: str = field(default="")                 # titre de l'annonce
     url: str = field(default="")                   # lien vers l'annonce originale
     published_at: str = field(default="")          # date de publication (ISO 8601 ou chaîne brute)
+    image_url: str = field(default="")             # URL image principale (small, ~400px)

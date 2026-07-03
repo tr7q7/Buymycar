@@ -34,8 +34,13 @@ def fmt_mileage(km: int) -> str:
 def fmt_score(score: float) -> str:
     if score is None:
         return "—"
-    if score >= 8:
-        return f"⭐ {score}/10"
-    if score >= 5:
-        return f"✅ {score}/10"
-    return f"⚠️ {score}/10"
+    s = int(round(score))
+    if s >= 90:
+        return f"🏆 {s}/100"
+    if s >= 75:
+        return f"⭐ {s}/100"
+    if s >= 55:
+        return f"✅ {s}/100"
+    if s >= 35:
+        return f"🔶 {s}/100"
+    return f"⚠️ {s}/100"

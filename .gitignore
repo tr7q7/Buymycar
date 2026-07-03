@@ -6,3 +6,10 @@ data/processed/*
 data/database/*
 exports/*
 .streamlit/secrets.toml
+
+# Logs de sortie Streamlit (parasites de dev)
+st_out.txt
+st_err.txt
+
+# Cache pytest
+.pytest_cache/

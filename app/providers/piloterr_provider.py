@@ -3,13 +3,14 @@ import os
 import time
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import requests
 
 from app.models.listing import Listing
 from app.providers.base_provider import BaseProvider
 from app.providers.provider_registry import register_provider
-from app.utils.formatting import make_listing_id
+
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +19,10 @@ _API_BASE = "https://piloterr.com/api/v2/leboncoin/search"
 # Piloterr attend un paramètre `query` contenant une URL LeBonCoin complète.
 # Les filtres (marque, prix…) sont encodés directement dans cette URL LBC,
 # pas en paramètres Piloterr séparés.
-_TIMEOUT = 60        # secondes
+_TIMEOUT = 90        # secondes — chaque page Piloterr peut prendre ~30 s
 _MAX_RETRIES = 1
 _RETRY_DELAY = 2     # secondes
+_LBC_PAGE_SIZE = 35  # nombre d'annonces par page LeBonCoin
 
 # ── Normalisation carburant / boîte (réutilise la logique CsvProvider) ────────
 
@@ -88,6 +90,7 @@ class SearchParams:
     transmission: Optional[str] = None
     location: Optional[str] = None
     limit: int = 50
+    max_results: int = 200
 
     def to_query_params(self, lbc_url: str) -> dict:
         """
@@ -120,6 +123,17 @@ class PiloterrMeta:
             f"Résultats : {self.returned_results}/{self.total_results} | "
             f"Temps : {self.response_time_ms} ms"
         )
+
+
+# ── Utilitaire pagination ─────────────────────────────────────────────────────
+
+def _with_page(url: str, page: int) -> str:
+    """Ajoute ou remplace le paramètre `page` dans une URL LeBonCoin."""
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query, keep_blank_values=True)
+    qs["page"] = [str(page)]
+    new_query = urlencode({k: v[0] for k, v in qs.items()})
+    return urlunparse(parsed._replace(query=new_query))
 
 
 # ── Provider ──────────────────────────────────────────────────────────────────
@@ -164,18 +178,84 @@ class PiloterrProvider(BaseProvider):
             return self._fallback_mock()
         return self._call_api()
 
-    # ── Appel API ─────────────────────────────────────────────────────────────
+    # ── Appel API — boucle de pagination ─────────────────────────────────────
 
     def _call_api(self) -> Tuple[List[Listing], PiloterrMeta]:
-        headers = {
-            "x-api-key": self._api_key,
-            "Content-Type": "application/json",
-        }
         if not self.lbc_url:
             raise PiloterrConfigError(
                 "lbc_url est requis. Fournissez une URL LeBonCoin complète à PiloterrProvider."
             )
-        params = self.search_params.to_query_params(self.lbc_url)
+
+        all_listings: List[Listing] = []
+        seen_ids: set = set()
+        total_credits_used = 0
+        total_credits_remaining = 0
+        total_results = 0
+        total_elapsed_ms = 0
+        page = 1
+
+        print(f"[DEBUG] _call_api démarré — max_results={self.search_params.max_results}", flush=True)
+        while len(all_listings) < self.search_params.max_results:
+            # page 1 : URL base sans paramètre page
+            paged_url = self.lbc_url if page == 1 else _with_page(self.lbc_url, page)
+            print(f"[DEBUG] page={page} url={paged_url}", flush=True)
+            try:
+                page_listings, page_meta = self._call_api_page(paged_url)
+            except Exception as e:
+                print(f"[DEBUG] page={page} EXCEPTION type={type(e).__name__} msg={e}", flush=True)
+                if page == 1:
+                    raise  # page 1 obligatoire : on laisse remonter l'erreur
+                # pages suivantes : on conserve les annonces déjà collectées
+                logger.warning("Page %d ignorée (%s) — arrêt pagination", page, e)
+                break
+
+            total_credits_used += page_meta.credits_used
+            total_credits_remaining = page_meta.credits_remaining
+            total_elapsed_ms += page_meta.response_time_ms
+            if page == 1:
+                total_results = page_meta.total_results
+
+            # dédoublonnage par list_id
+            new_count = 0
+            for listing in page_listings:
+                if listing.id not in seen_ids:
+                    seen_ids.add(listing.id)
+                    all_listings.append(listing)
+                    new_count += 1
+
+            print(f"[DEBUG] page={page} reçues={len(page_listings)} nouvelles={new_count} cumul={len(all_listings)}", flush=True)
+            logger.info(
+                "Page %d — %d annonces (+%d nouvelles, %d total)",
+                page, len(page_listings), new_count, len(all_listings),
+            )
+
+            # conditions d'arrêt
+            if not page_listings:
+                break
+            if len(page_listings) < _LBC_PAGE_SIZE:
+                break  # dernière page (incomplète)
+            if total_results > 0 and len(seen_ids) >= total_results:
+                break
+
+            page += 1
+
+        all_listings = all_listings[: self.search_params.max_results]
+
+        meta = PiloterrMeta(
+            credits_used=total_credits_used,
+            credits_remaining=total_credits_remaining,
+            total_results=total_results,
+            returned_results=len(all_listings),
+            response_time_ms=total_elapsed_ms,
+        )
+        return all_listings, meta
+
+    def _call_api_page(self, paged_url: str) -> Tuple[List[Listing], PiloterrMeta]:
+        headers = {
+            "x-api-key": self._api_key,
+            "Content-Type": "application/json",
+        }
+        params = self.search_params.to_query_params(paged_url)
         last_error: Exception = PiloterrError("Erreur inconnue")
 
         for attempt in range(_MAX_RETRIES + 1):
@@ -186,9 +266,9 @@ class PiloterrProvider(BaseProvider):
                 return self._handle_response(response, elapsed_ms)
 
             except (PiloterrAuthError, PiloterrQuotaError, PiloterrParseError):
-                raise  # pas de retry sur ces erreurs
+                raise
 
-            except requests.Timeout as e:
+            except requests.Timeout:
                 last_error = PiloterrTimeoutError(f"Timeout après {_TIMEOUT}s")
                 logger.warning("Tentative %d/%d — timeout", attempt + 1, _MAX_RETRIES + 1)
 
@@ -209,6 +289,7 @@ class PiloterrProvider(BaseProvider):
             raise PiloterrQuotaError("Quota de crédits épuisé (HTTP 429)")
 
         if response.status_code >= 500:
+            print(f"[DEBUG] HTTP 500 body={response.text[:300]}", flush=True)
             raise PiloterrServerError(f"Erreur serveur Piloterr (HTTP {response.status_code})")
 
         if response.status_code != 200:
@@ -224,7 +305,7 @@ class PiloterrProvider(BaseProvider):
         meta = PiloterrMeta(
             credits_used=data.get("credits_used", 0),
             credits_remaining=data.get("credits_remaining", 0),
-            total_results=data.get("total", len(listings)),
+            total_results=data.get("total", 0),
             returned_results=len(listings),
             response_time_ms=elapsed_ms,
         )
@@ -300,12 +381,16 @@ class PiloterrProvider(BaseProvider):
         url = (item.get("url") or "").strip()
         published_at = (item.get("first_publication_date") or "").strip()
 
-        # list_id est l'identifiant LBC natif — stable et unique
-        list_id = str(item.get("list_id") or "").strip()
-        listing_id = list_id if list_id else make_listing_id(
-            url=url, brand=brand, model=model, year=year,
-            mileage=mileage, price=price, location=location, title=title,
-        )
+        listing_id = str(item.get("list_id") or "").strip()
+        if not listing_id:
+            raise ValueError("list_id absent")
+
+        images = item.get("images") or {}
+        image_url = (
+            images.get("small_url")
+            or (images.get("urls") or [None])[0]
+            or ""
+        ).strip()
 
         return Listing(
             id=listing_id,
@@ -321,6 +406,7 @@ class PiloterrProvider(BaseProvider):
             title=title,
             url=url,
             published_at=published_at,
+            image_url=image_url,
         )
 
     # ── Fallback dry-run ──────────────────────────────────────────────────────

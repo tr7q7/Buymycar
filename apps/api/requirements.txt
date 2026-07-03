@@ -1,0 +1,8 @@
+# Dépendances de l'API (backend FastAPI).
+# Volontairement SANS la stack Streamlit/Plotly : le cœur métier (app.services,
+# app.analytics, app.providers) n'en dépend pas. Le déploiement API reste léger.
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
+requests>=2.31.0
+python-dotenv>=1.0.0

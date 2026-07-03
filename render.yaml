@@ -1,0 +1,17 @@
+# Déploiement du backend FastAPI sur Render.
+# Le frontend Next.js sera déployé séparément sur Vercel.
+services:
+  - type: web
+    name: lcb-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r apps/api/requirements.txt
+    startCommand: uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      # Clé Piloterr — à renseigner dans le dashboard Render (jamais committée).
+      - key: PILOTERR_API_KEY
+        sync: false
+      # Origines autorisées (URL du front Vercel), séparées par des virgules.
+      - key: CORS_ORIGINS
+        sync: false

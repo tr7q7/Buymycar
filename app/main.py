@@ -23,15 +23,13 @@ except ImportError:
 
 import app.providers.provider_factory as ProviderFactory  # noqa: F401 — conservé pour les tests
 from app.providers.piloterr_provider import (
-    SearchParams, PiloterrProvider,
+    SearchParams,
     PiloterrServerError, PiloterrTimeoutError, PiloterrError,
 )
 from app.providers.leboncoin_query_builder import LeboncoinQueryBuilder
 from app.utils.car_catalog import brands as catalog_brands, models_for
 from app.utils.fuel_compat import fuels_for as catalog_fuels_for
-from app.services.cleaning_service import clean
-from app.services.analysis_service import run_analysis
-from app.services.filtering_service import progressive_filter, FilterResult
+from app.services.search_service import run_search
 from app.utils.formatting import fmt_price, fmt_mileage, fmt_score, make_listing_id  # noqa: F401
 from app.models.listing import Listing
 from app.analytics.price_stats import compute_stats
@@ -98,85 +96,29 @@ if search_clicked and not piloterr_fuel:
     st.sidebar.error("Veuillez sélectionner un carburant pour lancer l'analyse Piloterr.")
     search_clicked = False
 
-# Seuil en dessous duquel on tente la recherche élargie (marque seule)
-_EXPAND_THRESHOLD = 20
-
-
-# ── Chargement — Piloterr ─────────────────────────────────────────────────────
-def _fetch_piloterr(brand: str, model: str, fuel: str, year_min: int, year_max: int):
-    params = SearchParams(
-        brand=brand,
-        model=model or None,
-        fuel=fuel or None,
-        year_min=year_min,
-        year_max=year_max,
-    )
-    builder = LeboncoinQueryBuilder(params)
-
-    # ── Stratégie 1 : brand + model ──────────────────────────────────────────
-    lbc_url = builder.build()
-    provider = PiloterrProvider(search_params=params, lbc_url=lbc_url)
-    raw_listings, meta = provider.fetch_with_meta()
-    raw_count = len(raw_listings)
-
-    filt = progressive_filter(raw_listings, brand, model or "", fuel or "", year_min, year_max)
-    strategy = "standard"
-
-    # ── Stratégie 2 : brand seule (si échantillon strict insuffisant) ─────────
-    if model and filt.strict_count < _EXPAND_THRESHOLD:
-        params_brand = SearchParams(brand=brand, model=None, fuel=fuel or None,
-                                    year_min=year_min, year_max=year_max)
-        lbc_url_brand = LeboncoinQueryBuilder(params_brand).build()
-        provider2 = PiloterrProvider(search_params=params, lbc_url=lbc_url_brand)
-        raw2, _meta2 = provider2.fetch_with_meta()
-
-        # Fusion des deux résultats (déduplication par id)
-        seen_ids = {l.id for l in raw_listings}
-        merged = raw_listings + [l for l in raw2 if l.id not in seen_ids]
-
-        filt_merged = progressive_filter(merged, brand, model or "", fuel or "", year_min, year_max)
-
-        if len(filt_merged.listings) > len(filt.listings):
-            raw_listings = merged
-            raw_count    = len(merged)
-            filt         = filt_merged
-            strategy     = "elargie"
-
-    cleaned = clean(filt.listings)
-    result  = run_analysis(cleaned)
-    return (
-        result["listings"],
-        result["stats"],
-        result.get("low_price_excluded", 0),
-        filt,
-        meta,
-        lbc_url,
-        raw_count,
-        strategy,
-    )
-
 # ── Exécution de la recherche ─────────────────────────────────────────────────
 piloterr_meta = None
 
 if search_clicked:
     with st.spinner("Recherche en cours… (plusieurs pages, ~30 s par page)"):
         try:
-            _listings, _stats, _low_excl, _filt, _meta, _url, _raw, _strat = _fetch_piloterr(
+            _res = run_search(
                 piloterr_brand, piloterr_model, piloterr_fuel,
                 piloterr_year_min, piloterr_year_max,
             )
-            st.session_state["p_listings"]       = _listings
-            st.session_state["p_stats"]          = _stats
-            st.session_state["p_low_excl"]       = _low_excl
+            _filt = _res.filt
+            st.session_state["p_listings"]       = _res.listings
+            st.session_state["p_stats"]          = _res.stats
+            st.session_state["p_low_excl"]       = _res.low_price_excluded
             st.session_state["p_filter_level"]   = _filt.level
             st.session_state["p_strict_count"]   = _filt.strict_count
             st.session_state["p_filter_retained"]= len(_filt.listings)
             st.session_state["p_year_min_used"]  = _filt.year_min_used
             st.session_state["p_year_max_used"]  = _filt.year_max_used
-            st.session_state["p_meta"]           = _meta
-            st.session_state["p_url"]            = _url
-            st.session_state["p_raw_count"]      = _raw
-            st.session_state["p_strategy"]       = _strat
+            st.session_state["p_meta"]           = _res.meta
+            st.session_state["p_url"]            = _res.lbc_url
+            st.session_state["p_raw_count"]      = _res.raw_count
+            st.session_state["p_strategy"]       = _res.strategy
             st.session_state.pop("p_error", None)
             st.session_state.pop("p_selected_point", None)
         except (PiloterrServerError, PiloterrTimeoutError) as e:

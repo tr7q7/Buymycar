@@ -1,0 +1,384 @@
+"use client"
+
+import * as React from "react"
+import useSWR from "swr"
+import { AnimatePresence, motion } from "motion/react"
+import { ArrowRight } from "lucide-react"
+
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+
+import {
+  ApiError,
+  fetchBrands,
+  fetchFuels,
+  fetchJob,
+  fetchModels,
+  fuelLabel,
+  startSearch,
+  type SearchJobResult,
+} from "@/lib/api"
+
+import { YearRangeSlider } from "./year-range-slider"
+import { LoadingState } from "./loading-state"
+import { ErrorState } from "./error-state"
+import { DoneState } from "./done-state"
+
+const POLL_INTERVAL_MS = 2000
+const POLL_TIMEOUT_MS = 4 * 60 * 1000
+
+type Status = "idle" | "loading" | "done" | "error"
+
+interface SearchFormProps {
+  onAnalysisComplete?: (result: unknown) => void
+}
+
+const transition = { duration: 0.2, ease: "easeOut" as const }
+
+export function SearchForm({ onAnalysisComplete }: SearchFormProps) {
+  const currentYear = React.useMemo(() => new Date().getFullYear(), [])
+
+  const [brand, setBrand] = React.useState("")
+  const [model, setModel] = React.useState("")
+  const [fuel, setFuel] = React.useState("")
+  const [years, setYears] = React.useState<[number, number]>([
+    2018,
+    currentYear,
+  ])
+
+  const [status, setStatus] = React.useState<Status>("idle")
+  const [errorMessage, setErrorMessage] = React.useState("")
+  const [elapsedMs, setElapsedMs] = React.useState(0)
+  const [result, setResult] = React.useState<SearchJobResult["result"]>()
+
+  // --- Catalog fetching (SWR, no fetch-in-useEffect) ---
+  const {
+    data: brands,
+    isLoading: brandsLoading,
+    error: brandsError,
+  } = useSWR("catalog/brands", () => fetchBrands())
+
+  const { data: models, isLoading: modelsLoading } = useSWR(
+    brand ? ["catalog/models", brand] : null,
+    ([, b]) => fetchModels(b),
+  )
+
+  const { data: fuels, isLoading: fuelsLoading } = useSWR(
+    brand ? ["catalog/fuels", brand, model] : null,
+    ([, b, m]) => fetchFuels(b, m),
+  )
+
+  // Auto-select the only available fuel, when applicable.
+  React.useEffect(() => {
+    if (fuels && fuels.length === 1) {
+      setFuel(fuels[0])
+    }
+  }, [fuels])
+
+  const singleFuel = !!fuels && fuels.length === 1
+
+  // --- Polling refs ---
+  const pollTimer = React.useRef<ReturnType<typeof setInterval> | null>(null)
+  const elapsedTimer = React.useRef<ReturnType<typeof setInterval> | null>(null)
+  const abortRef = React.useRef<AbortController | null>(null)
+  const startRef = React.useRef<number>(0)
+
+  const stopTimers = React.useCallback(() => {
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current)
+      pollTimer.current = null
+    }
+    if (elapsedTimer.current) {
+      clearInterval(elapsedTimer.current)
+      elapsedTimer.current = null
+    }
+    abortRef.current?.abort()
+    abortRef.current = null
+  }, [])
+
+  React.useEffect(() => stopTimers, [stopTimers])
+
+  // --- Handlers ---
+  function handleBrandChange(value: string | null) {
+    setBrand(value ?? "")
+    setModel("")
+    setFuel("")
+  }
+
+  function handleModelChange(value: string | null) {
+    setModel(value ?? "")
+    setFuel("")
+  }
+
+  const runSearch = React.useCallback(async () => {
+    setStatus("loading")
+    setErrorMessage("")
+    setResult(undefined)
+    setElapsedMs(0)
+
+    const controller = new AbortController()
+    abortRef.current = controller
+    startRef.current = Date.now()
+
+    elapsedTimer.current = setInterval(() => {
+      setElapsedMs(Date.now() - startRef.current)
+    }, 250)
+
+    try {
+      const job = await startSearch(
+        {
+          brand,
+          model,
+          fuel,
+          year_min: years[0],
+          year_max: years[1],
+        },
+        controller.signal,
+      )
+
+      pollTimer.current = setInterval(async () => {
+        // Timeout guard.
+        if (Date.now() - startRef.current > POLL_TIMEOUT_MS) {
+          stopTimers()
+          setErrorMessage("L'analyse a expiré, réessayez.")
+          setStatus("error")
+          return
+        }
+
+        try {
+          const res = await fetchJob(job.job_id, controller.signal)
+          if (res.status === "done") {
+            stopTimers()
+            setResult(res.result)
+            setStatus("done")
+            onAnalysisComplete?.(res.result)
+          } else if (res.status === "error") {
+            stopTimers()
+            setErrorMessage(
+              res.error || "L'analyse a échoué, réessayez.",
+            )
+            setStatus("error")
+          }
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") return
+          stopTimers()
+          setErrorMessage("Service momentanément indisponible.")
+          setStatus("error")
+        }
+      }, POLL_INTERVAL_MS)
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return
+      stopTimers()
+      setErrorMessage(
+        err instanceof ApiError
+          ? err.message
+          : "Service momentanément indisponible.",
+      )
+      setStatus("error")
+    }
+  }, [brand, model, fuel, years, onAnalysisComplete, stopTimers])
+
+  function handleCancel() {
+    stopTimers()
+    setStatus("idle")
+    setElapsedMs(0)
+  }
+
+  function handleRetry() {
+    setStatus("idle")
+    setErrorMessage("")
+  }
+
+  const canSubmit = !!brand && !!fuel && status === "idle"
+
+  const count =
+    typeof result?.stats?.count === "number" ? result.stats.count : 0
+
+  return (
+    <Card className="w-full rounded-2xl shadow-sm">
+      <CardContent className="p-5 sm:p-6">
+        <AnimatePresence mode="wait" initial={false}>
+          {status === "idle" && (
+            <motion.div
+              key="idle"
+              initial={{ opacity: 0, scale: 0.99 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.99 }}
+              transition={transition}
+            >
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (canSubmit) void runSearch()
+                }}
+              >
+                <FieldGroup className="gap-5">
+                  {/* Marque */}
+                  <Field>
+                    <FieldLabel htmlFor="brand">Marque</FieldLabel>
+                    {brandsLoading ? (
+                      <Skeleton className="h-9 w-full rounded-lg" />
+                    ) : (
+                      <Select
+                        value={brand}
+                        onValueChange={handleBrandChange}
+                      >
+                        <SelectTrigger
+                          id="brand"
+                          className="h-9 w-full"
+                          disabled={!!brandsError}
+                        >
+                          <SelectValue placeholder="Choisissez une marque" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {(brands ?? []).map((b) => (
+                              <SelectItem key={b} value={b}>
+                                {b}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </Field>
+
+                  {/* Modèle */}
+                  <Field>
+                    <FieldLabel htmlFor="model">Modèle</FieldLabel>
+                    {brand && modelsLoading ? (
+                      <Skeleton className="h-9 w-full rounded-lg" />
+                    ) : (
+                      <Select
+                        value={model}
+                        onValueChange={handleModelChange}
+                        disabled={!brand || (models ?? []).length === 0}
+                      >
+                        <SelectTrigger id="model" className="h-9 w-full">
+                          <SelectValue placeholder="Tous les modèles" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {(models ?? []).map((m) => (
+                              <SelectItem key={m} value={m}>
+                                {m}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </Field>
+
+                  {/* Carburant */}
+                  <Field>
+                    <FieldLabel htmlFor="fuel">Carburant</FieldLabel>
+                    {brand && fuelsLoading ? (
+                      <Skeleton className="h-9 w-full rounded-lg" />
+                    ) : (
+                      <Select
+                        value={fuel}
+                        onValueChange={(v) => setFuel(v ?? "")}
+                        disabled={
+                          !brand ||
+                          singleFuel ||
+                          (fuels ?? []).length === 0
+                        }
+                      >
+                        <SelectTrigger id="fuel" className="h-9 w-full">
+                          <SelectValue placeholder="Choisissez un carburant">
+                            {(value: string | null) =>
+                              value
+                                ? fuelLabel(value)
+                                : "Choisissez un carburant"
+                            }
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {(fuels ?? []).map((f) => (
+                              <SelectItem key={f} value={f}>
+                                {fuelLabel(f)}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </Field>
+
+                  {/* Année */}
+                  <YearRangeSlider
+                    min={2000}
+                    max={currentYear}
+                    value={years}
+                    onChange={setYears}
+                  />
+
+                  <Button
+                    type="submit"
+                    className="mt-1 h-10 w-full"
+                    disabled={!canSubmit}
+                  >
+                    Lancer l&apos;analyse
+                    <ArrowRight data-icon="inline-end" />
+                  </Button>
+                </FieldGroup>
+              </form>
+            </motion.div>
+          )}
+
+          {status === "loading" && (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0, scale: 0.99 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.99 }}
+              transition={transition}
+            >
+              <LoadingState elapsedMs={elapsedMs} onCancel={handleCancel} />
+            </motion.div>
+          )}
+
+          {status === "error" && (
+            <motion.div
+              key="error"
+              initial={{ opacity: 0, scale: 0.99 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.99 }}
+              transition={transition}
+            >
+              <ErrorState message={errorMessage} onRetry={handleRetry} />
+            </motion.div>
+          )}
+
+          {status === "done" && (
+            <motion.div
+              key="done"
+              initial={{ opacity: 0, scale: 0.99 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.99 }}
+              transition={transition}
+            >
+              <DoneState
+                count={count}
+                onViewResults={() => {}}
+                onNewSearch={() => setStatus("idle")}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </CardContent>
+    </Card>
+  )
+}

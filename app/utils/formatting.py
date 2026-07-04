@@ -44,3 +44,29 @@ def fmt_score(score: float) -> str:
     if s >= 35:
         return f"🔶 {s}/100"
     return f"⚠️ {s}/100"
+
+
+# Valeurs de modèle « fourre-tout » renvoyées par LeBonCoin quand la catégorie
+# de modèle n'est pas renseignée. À masquer côté affichage (fait « amateur »).
+_GENERIC_MODELS = {"", "autre", "autres", "autre modele", "non renseigne"}
+
+
+def clean_model_label(model: str) -> str:
+    """
+    Nettoie un libellé de modèle pour l'affichage.
+
+    Renvoie "" pour les valeurs génériques ("Autres", vide…) afin que le client
+    retombe sur le titre de l'annonce plutôt que d'afficher « Audi Autres ».
+    """
+    if not model:
+        return ""
+    if model.strip().lower() in _GENERIC_MODELS:
+        return ""
+    return model.strip()
+
+
+def clean_title(title: str) -> str:
+    """Normalise un titre d'annonce brut : espaces multiples compactés, trim."""
+    if not title:
+        return ""
+    return " ".join(title.split())

@@ -10,6 +10,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from app.services.search_service import SearchResult
+from app.utils.formatting import clean_model_label, clean_title
 
 
 # ── Entrée ────────────────────────────────────────────────────────────────────
@@ -64,6 +65,15 @@ class MetaOut(BaseModel):
     credits_remaining: int
 
 
+class MarketEstimateOut(BaseModel):
+    estimated: float          # valeur de marché estimée (€)
+    low: float                # intervalle normal bas (P25 pondéré)
+    high: float               # intervalle normal haut (P75 pondéré)
+    confidence: str           # "Élevée" / "Moyenne" / "Faible"
+    n_used: int               # nb d'annonces dans le calcul
+    effective_n: float        # taille d'échantillon effective (ESS)
+
+
 class SearchResultOut(BaseModel):
     listings: List[ListingOut]
     stats: StatsOut
@@ -73,6 +83,7 @@ class SearchResultOut(BaseModel):
     raw_count: int
     filter: FilterOut
     meta: Optional[MetaOut] = None
+    market_estimate: Optional[MarketEstimateOut] = None
 
 
 # ── Job ───────────────────────────────────────────────────────────────────────
@@ -102,13 +113,24 @@ def to_search_result_out(res: SearchResult) -> SearchResultOut:
             credits_remaining=res.meta.credits_remaining,
         )
 
+    market_out = None
+    if res.market_est is not None:
+        market_out = MarketEstimateOut(
+            estimated=res.market_est.estimated,
+            low=res.market_est.low,
+            high=res.market_est.high,
+            confidence=res.market_est.confidence,
+            n_used=res.market_est.n_used,
+            effective_n=res.market_est.effective_n,
+        )
+
     return SearchResultOut(
         listings=[
             ListingOut(
-                id=l.id, brand=l.brand, model=l.model, year=l.year,
+                id=l.id, brand=l.brand, model=clean_model_label(l.model), year=l.year,
                 mileage=l.mileage, price=l.price, fuel=l.fuel,
                 transmission=l.transmission, location=l.location,
-                score=l.score, title=l.title, url=l.url, image_url=l.image_url,
+                score=l.score, title=clean_title(l.title), url=l.url, image_url=l.image_url,
             )
             for l in res.listings
         ],
@@ -125,4 +147,5 @@ def to_search_result_out(res: SearchResult) -> SearchResultOut:
             year_max_used=res.filt.year_max_used,
         ),
         meta=meta_out,
+        market_estimate=market_out,
     )

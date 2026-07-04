@@ -21,6 +21,7 @@ from app.providers.leboncoin_query_builder import LeboncoinQueryBuilder
 from app.services.cleaning_service import clean
 from app.services.analysis_service import run_analysis
 from app.services.filtering_service import progressive_filter, FilterResult
+from app.analytics.market_price_estimator import MarketEstimate
 from app.models.listing import Listing
 
 # Seuil d'annonces strictement comparables en dessous duquel on tente la
@@ -39,6 +40,7 @@ class SearchResult:
     lbc_url: str                   # URL LeBonCoin de la stratégie principale
     raw_count: int                 # nb d'annonces brutes récupérées (après merge éventuel)
     strategy: str                  # "standard" ou "elargie"
+    market_est: Optional[MarketEstimate] = None  # valeur marché estimée (pondérée)
 
 
 def run_search(
@@ -103,4 +105,5 @@ def run_search(
         lbc_url=lbc_url,
         raw_count=raw_count,
         strategy=strategy,
+        market_est=result.get("market_est"),
     )

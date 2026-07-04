@@ -33,19 +33,25 @@ import { YearRangeSlider } from "./year-range-slider"
 import { LoadingState } from "./loading-state"
 import { ErrorState } from "./error-state"
 import { DoneState } from "./done-state"
+import { ResultsDashboard } from "./results-dashboard"
 
 const POLL_INTERVAL_MS = 2000
 const POLL_TIMEOUT_MS = 4 * 60 * 1000
 
-type Status = "idle" | "loading" | "done" | "error"
+type Status = "idle" | "loading" | "done" | "error" | "results"
 
 interface SearchFormProps {
   onAnalysisComplete?: (result: unknown) => void
+  /** Notifies the parent when the full-width results view is shown. */
+  onViewChange?: (isResults: boolean) => void
 }
 
 const transition = { duration: 0.2, ease: "easeOut" as const }
 
-export function SearchForm({ onAnalysisComplete }: SearchFormProps) {
+export function SearchForm({
+  onAnalysisComplete,
+  onViewChange,
+}: SearchFormProps) {
   const currentYear = React.useMemo(() => new Date().getFullYear(), [])
 
   const [brand, setBrand] = React.useState("")
@@ -60,6 +66,18 @@ export function SearchForm({ onAnalysisComplete }: SearchFormProps) {
   const [errorMessage, setErrorMessage] = React.useState("")
   const [elapsedMs, setElapsedMs] = React.useState(0)
   const [result, setResult] = React.useState<SearchJobResult["result"]>()
+  const [submittedQuery, setSubmittedQuery] = React.useState<{
+    brand: string
+    model: string
+    fuel: string
+    yearMin: number
+    yearMax: number
+  }>()
+
+  // Notify the parent so it can widen the layout for the results view.
+  React.useEffect(() => {
+    onViewChange?.(status === "results")
+  }, [status, onViewChange])
 
   // --- Catalog fetching (SWR, no fetch-in-useEffect) ---
   const {
@@ -125,6 +143,13 @@ export function SearchForm({ onAnalysisComplete }: SearchFormProps) {
     setErrorMessage("")
     setResult(undefined)
     setElapsedMs(0)
+    setSubmittedQuery({
+      brand,
+      model,
+      fuel,
+      yearMin: years[0],
+      yearMax: years[1],
+    })
 
     const controller = new AbortController()
     abortRef.current = controller
@@ -203,6 +228,23 @@ export function SearchForm({ onAnalysisComplete }: SearchFormProps) {
 
   const count =
     typeof result?.stats?.count === "number" ? result.stats.count : 0
+
+  function handleReset() {
+    setStatus("idle")
+    setResult(undefined)
+    setErrorMessage("")
+    setElapsedMs(0)
+  }
+
+  if (status === "results" && result) {
+    return (
+      <ResultsDashboard
+        result={result}
+        query={submittedQuery}
+        onNewSearch={handleReset}
+      />
+    )
+  }
 
   return (
     <Card className="w-full rounded-2xl shadow-sm">
@@ -372,8 +414,8 @@ export function SearchForm({ onAnalysisComplete }: SearchFormProps) {
             >
               <DoneState
                 count={count}
-                onViewResults={() => {}}
-                onNewSearch={() => setStatus("idle")}
+                onViewResults={() => setStatus("results")}
+                onNewSearch={handleReset}
               />
             </motion.div>
           )}

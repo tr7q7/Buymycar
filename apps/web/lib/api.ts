@@ -20,13 +20,60 @@ export interface SearchJob {
   status: SearchStatus
 }
 
+export interface Listing {
+  id: string
+  brand: string
+  model: string
+  year: number
+  mileage: number
+  price: number
+  fuel: string
+  transmission: string
+  location: string
+  score: number | null
+  title: string
+  url: string
+  image_url: string
+}
+
+export interface MarketEstimate {
+  estimated: number
+  low: number
+  high: number
+  confidence: string
+  n_used: number
+  effective_n: number
+}
+
+export interface ResultStats {
+  count: number
+  mean: number
+  median: number
+  min: number
+  max: number
+  stdev: number
+}
+
+export interface ResultFilter {
+  level: number
+  strict_count: number
+  retained: number
+  year_min_used: number
+  year_max_used: number
+}
+
+export interface ResultData {
+  listings: Listing[]
+  stats: ResultStats
+  filter: ResultFilter
+  strategy: string
+  market_estimate: MarketEstimate | null
+}
+
 export interface SearchJobResult {
   job_id: string
   status: SearchStatus
-  result?: {
-    stats?: { count?: number }
-    [key: string]: unknown
-  }
+  result?: ResultData
   error?: string
 }
 

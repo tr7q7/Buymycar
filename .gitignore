@@ -13,3 +13,6 @@ st_err.txt
 
 # Cache pytest
 .pytest_cache/
+
+# Store pnpm local (artefact d'install frontend, volumineux)
+.pnpm-store/

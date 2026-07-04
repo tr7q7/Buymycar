@@ -1,0 +1,13 @@
+# Configuration pnpm (pnpm 11 lit ses réglages ici).
+#
+# 1) On tranche explicitement les build-scripts : ni sharp ni msw ne doivent
+#    s'exécuter (sharp inutile car Next est en images.unoptimized ; msw = mock dev).
+#    Sans cela, pnpm réclame une approbation interactive et échoue en CI (Vercel).
+allowBuilds:
+  msw: false
+  sharp: false
+#
+# 2) On désactive la pré-vérification des dépendances avant `pnpm run` : elle relance
+#    un install strict qui échoue sur l'approbation des builds. Le build lui-même
+#    (next build) n'en a pas besoin.
+verifyDepsBeforeRun: false

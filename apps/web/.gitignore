@@ -17,6 +17,3 @@ node_modules
 
 # Next.js généré
 next-env.d.ts
-
-# Fichier de config généré par pnpm 11 (approbation de builds)
-pnpm-workspace.yaml

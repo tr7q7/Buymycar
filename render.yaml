@@ -2,13 +2,16 @@
 # Le frontend Next.js sera déployé séparément sur Vercel.
 services:
   - type: web
-    name: lcb-api
+    name: autocote-api
     runtime: python
     plan: free
     buildCommand: pip install -r apps/api/requirements.txt
     startCommand: uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      # Version Python (Render lit aussi .python-version) — pin de reproductibilité.
+      - key: PYTHON_VERSION
+        value: "3.11.9"
       # Clé Piloterr — à renseigner dans le dashboard Render (jamais committée).
       - key: PILOTERR_API_KEY
         sync: false

@@ -24,7 +24,7 @@ export function LoadingState({ elapsedMs, onCancel }: LoadingStateProps) {
 
       <div className="flex flex-col gap-1.5">
         <p className="text-balance text-sm font-medium">
-          Récupération des annonces sur LeBonCoin…
+          Analyse du marché en cours…
         </p>
         <p className="text-pretty text-xs text-muted-foreground">
           L&apos;analyse peut prendre 1 à 3 minutes. Vous pouvez laisser cette

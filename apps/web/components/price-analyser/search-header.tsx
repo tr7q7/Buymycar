@@ -8,10 +8,10 @@ export function SearchHeader() {
       </div>
       <div className="flex flex-col gap-1">
         <h1 className="text-balance text-xl font-semibold tracking-tight sm:text-2xl">
-          LCB Price Analyser
+          AutoCote
         </h1>
         <p className="text-pretty text-sm text-muted-foreground">
-          Estimez le juste prix du marché
+          La cote en temps réel du marché de l'occasion
         </p>
       </div>
     </header>

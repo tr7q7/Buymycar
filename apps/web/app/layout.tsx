@@ -10,10 +10,9 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'LCB Price Analyser — Estimez le juste prix du marché',
+  title: "AutoCote — La cote en temps réel du marché de l'occasion",
   description:
     "Analysez et estimez le juste prix du marché d'un véhicule d'occasion à partir des annonces en temps réel.",
-  generator: 'v0.app',
   icons: {
     icon: [
       {

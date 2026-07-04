@@ -89,6 +89,13 @@ function url(path: string): string {
   if (!API) {
     throw new ApiError("NEXT_PUBLIC_API_URL n'est pas configurée.")
   }
+  // Garde-fou : en production, refuser les mocks de démonstration.
+  // Évite d'afficher silencieusement de fausses données si l'env est mal réglée.
+  if (process.env.NODE_ENV === "production" && API.startsWith("/mock")) {
+    throw new ApiError(
+      "Configuration invalide : NEXT_PUBLIC_API_URL pointe vers les mocks en production.",
+    )
+  }
   return `${API.replace(/\/$/, "")}${path}`
 }
 

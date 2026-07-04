@@ -18,7 +18,7 @@ def _origins_from_env() -> List[str]:
 
 @dataclass
 class Settings:
-    app_name: str = "LCB Price Analyser API"
+    app_name: str = "AutoCote API"
     version: str = "0.1.0"
     cors_origins: List[str] = field(default_factory=_origins_from_env)
 

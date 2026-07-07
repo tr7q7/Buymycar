@@ -8,6 +8,7 @@ export type Fuel = "essence" | "diesel" | "electrique"
 export type SearchStatus = "pending" | "running" | "done" | "error"
 
 export interface SearchPayload {
+  email: string
   brand: string
   model: string
   fuel: string
@@ -18,6 +19,11 @@ export interface SearchPayload {
 export interface SearchJob {
   job_id: string
   status: SearchStatus
+}
+
+export interface Credits {
+  email: string
+  credits_remaining: number
 }
 
 export interface Listing {
@@ -82,6 +88,14 @@ export class ApiError extends Error {
   constructor(message: string) {
     super(message)
     this.name = "ApiError"
+  }
+}
+
+/** Thrown when a search is refused because the email has no credits left. */
+export class NeedCreditsError extends Error {
+  constructor() {
+    super("NEED_CREDITS")
+    this.name = "NeedCreditsError"
   }
 }
 
@@ -153,10 +167,67 @@ export async function startSearch(
     if (err instanceof DOMException && err.name === "AbortError") throw err
     throw new ApiError("Service momentanément indisponible.")
   }
+  if (res.status === 402) {
+    throw new NeedCreditsError()
+  }
   if (!res.ok) {
     throw new ApiError("Service momentanément indisponible.")
   }
   return (await res.json()) as SearchJob
+}
+
+/** Crée l'email avec 2 crédits gratuits s'il est inconnu ; renvoie le solde. */
+export async function initCredits(
+  email: string,
+  signal?: AbortSignal,
+): Promise<Credits> {
+  let res: Response
+  try {
+    res = await fetch(url("/credits/init"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+      signal,
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err
+    throw new ApiError("Service momentanément indisponible.")
+  }
+  if (!res.ok) {
+    throw new ApiError("Service momentanément indisponible.")
+  }
+  return (await res.json()) as Credits
+}
+
+/** Consulte le solde de crédits d'un email. */
+export function getCredits(email: string, signal?: AbortSignal): Promise<Credits> {
+  return getJson<Credits>(
+    `/credits?email=${encodeURIComponent(email)}`,
+    signal,
+  )
+}
+
+/** Crée une session Stripe Checkout (pack de 10 analyses) et renvoie l'URL. */
+export async function createCheckoutSession(
+  email: string,
+  signal?: AbortSignal,
+): Promise<{ url: string }> {
+  let res: Response
+  try {
+    res = await fetch(url("/checkout/create-session"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+      signal,
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err
+    throw new ApiError("Service momentanément indisponible.")
+  }
+  if (!res.ok) {
+    throw new ApiError("Paiement momentanément indisponible.")
+  }
+  return (await res.json()) as { url: string }
 }
 
 export function fetchJob(

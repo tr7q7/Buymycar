@@ -22,6 +22,14 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def validate_email(value: str) -> str:
+    """Validation minimale (MVP) : présence d'un @ et d'un domaine avec point."""
+    v = (value or "").strip()
+    if "@" not in v or "." not in v.split("@")[-1] or len(v) < 5:
+        raise ValueError("Email invalide")
+    return v
+
+
 def get_or_create(db: Session, email: str) -> Customer:
     """Retourne le client, en le créant avec FREE_CREDITS s'il est inconnu."""
     email = normalize_email(email)

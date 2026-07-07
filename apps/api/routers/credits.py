@@ -11,15 +11,9 @@ from sqlalchemy.orm import Session
 
 from apps.api.db import get_db
 from apps.api import credits_service
+from apps.api.credits_service import validate_email
 
 router = APIRouter(prefix="/credits", tags=["credits"])
-
-
-def _validate_email(value: str) -> str:
-    v = (value or "").strip()
-    if "@" not in v or "." not in v.split("@")[-1] or len(v) < 5:
-        raise ValueError("Email invalide")
-    return v
 
 
 class CreditsInitRequest(BaseModel):
@@ -28,7 +22,7 @@ class CreditsInitRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def _check(cls, v: str) -> str:
-        return _validate_email(v)
+        return validate_email(v)
 
 
 class CreditsOut(BaseModel):
@@ -48,7 +42,7 @@ def read_credits(
     db: Session = Depends(get_db),
 ) -> CreditsOut:
     try:
-        email = _validate_email(email)
+        email = validate_email(email)
     except ValueError:
         raise HTTPException(status_code=422, detail="Email invalide")
     return CreditsOut(

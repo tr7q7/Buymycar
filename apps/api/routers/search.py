@@ -8,9 +8,13 @@ La recherche elle-même (run_search) est le cœur métier extrait à l'Étape 1 
 l'API ne fait qu'orchestrer l'asynchrone et sérialiser le résultat.
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.services.search_service import run_search
+from apps.api.db import get_db
+from apps.api.db_models import Search
+from apps.api import credits_service
 from apps.api.jobs import job_manager, JobStatus
 from apps.api.schemas import (
     SearchRequest, JobCreatedOut, JobStatusOut, to_search_result_out,
@@ -20,12 +24,26 @@ router = APIRouter(prefix="/search", tags=["search"])
 
 
 @router.post("", response_model=JobCreatedOut, status_code=status.HTTP_202_ACCEPTED)
-def create_search(req: SearchRequest) -> JobCreatedOut:
-    """Soumet une recherche en arrière-plan. Renvoie un identifiant à interroger."""
+def create_search(req: SearchRequest, db: Session = Depends(get_db)) -> JobCreatedOut:
+    """
+    Soumet une recherche en arrière-plan après consommation d'un crédit.
+
+    Décrément atomique AVANT lancement : si aucun crédit, on renvoie 402 NEED_CREDITS
+    sans lancer de job ni consommer de crédit. Le crédit n'est débité qu'une fois,
+    au lancement accepté (pas de remboursement auto en cas d'échec technique du job).
+    """
+    if not credits_service.decrement(db, req.email):
+        raise HTTPException(status_code=402, detail="NEED_CREDITS")
+
     job_id = job_manager.submit(
         run_search,
         req.brand, req.model, req.fuel, req.year_min, req.year_max,
     )
+
+    # Trace la recherche (email ↔ job) pour un éventuel remboursement futur.
+    db.add(Search(email=credits_service.normalize_email(req.email), search_id=job_id))
+    db.commit()
+
     return JobCreatedOut(job_id=job_id, status=JobStatus.PENDING.value)
 
 

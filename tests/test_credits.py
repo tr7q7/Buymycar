@@ -50,9 +50,13 @@ def client():
         finally:
             s.close()
 
+    previous = app.dependency_overrides.get(get_db)
     app.dependency_overrides[get_db] = override
     yield TestClient(app)
-    app.dependency_overrides.clear()
+    if previous is None:
+        app.dependency_overrides.pop(get_db, None)
+    else:
+        app.dependency_overrides[get_db] = previous
     engine.dispose()
 
 

@@ -7,20 +7,27 @@ SearchResult…). Le frontend ne dépend que de ces schémas.
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.services.search_service import SearchResult
 from app.utils.formatting import clean_model_label, clean_title
+from apps.api.credits_service import validate_email
 
 
 # ── Entrée ────────────────────────────────────────────────────────────────────
 
 class SearchRequest(BaseModel):
+    email: str = Field(..., examples=["pro@garage.fr"])
     brand: str = Field(..., examples=["audi"])
     model: str = Field("", examples=["rs3"])
     fuel: str = Field(..., examples=["essence"])
     year_min: int = Field(..., ge=1990, le=2100, examples=[2018])
     year_max: int = Field(..., ge=1990, le=2100, examples=[2026])
+
+    @field_validator("email")
+    @classmethod
+    def _check_email(cls, v: str) -> str:
+        return validate_email(v)
 
 
 # ── Sortie ────────────────────────────────────────────────────────────────────

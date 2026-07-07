@@ -39,18 +39,23 @@ interface Point {
 
 interface PriceMileageChartProps {
   listings: Listing[]
+  onPointClick?: (listing: Listing) => void
 }
 
 function DotShape(props: {
   cx?: number
   cy?: number
   payload?: Point
+  onSelect?: (listing: Listing) => void
 }) {
-  const { cx, cy, payload } = props
+  const { cx, cy, payload, onSelect } = props
   if (cx == null || cy == null || !payload) return null
   const r = payload.isBest ? 7 : 4.5
   return (
-    <g>
+    <g
+      onClick={() => onSelect?.(payload.listing)}
+      style={{ cursor: onSelect ? "pointer" : undefined }}
+    >
       {payload.isBest && (
         <circle
           cx={cx}
@@ -116,7 +121,7 @@ function ChartTooltip({
   )
 }
 
-export function PriceMileageChart({ listings }: PriceMileageChartProps) {
+export function PriceMileageChart({ listings, onPointClick }: PriceMileageChartProps) {
   const points = React.useMemo<Point[]>(() => {
     const years = listings.map((l) => l.year)
     const minYear = Math.min(...years)
@@ -166,7 +171,13 @@ export function PriceMileageChart({ listings }: PriceMileageChartProps) {
             cursor={{ strokeDasharray: "3 3", stroke: "var(--border)" }}
             content={<ChartTooltip />}
           />
-          <Scatter data={points} shape={<DotShape />} isAnimationActive={false} />
+          <Scatter
+            data={points}
+            shape={(props: object) => (
+              <DotShape {...(props as { cx?: number; cy?: number; payload?: Point })} onSelect={onPointClick} />
+            )}
+            isAnimationActive={false}
+          />
         </ScatterChart>
       </ResponsiveContainer>
     </div>

@@ -105,6 +105,32 @@ export function ResultsDashboard({
     }
   }
 
+  // Clic sur un point du graphique → défilement vers l'annonce (et son lien) + surbrillance.
+  const [highlightId, setHighlightId] = React.useState<string | null>(null)
+  const highlightTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handlePointClick = React.useCallback((listing: Listing) => {
+    setHighlightId(listing.id)
+    requestAnimationFrame(() => {
+      const els = document.querySelectorAll<HTMLElement>(
+        `[data-listing-id="${listing.id}"]`,
+      )
+      // Cible l'élément réellement visible (carte mobile OU ligne de tableau desktop).
+      const target =
+        Array.from(els).find((el) => el.offsetParent !== null) ?? els[0]
+      target?.scrollIntoView({ behavior: "smooth", block: "center" })
+    })
+    if (highlightTimer.current) clearTimeout(highlightTimer.current)
+    highlightTimer.current = setTimeout(() => setHighlightId(null), 2600)
+  }, [])
+
+  React.useEffect(
+    () => () => {
+      if (highlightTimer.current) clearTimeout(highlightTimer.current)
+    },
+    [],
+  )
+
   const hasListings = listings.length > 0
 
   return (
@@ -201,7 +227,10 @@ export function ResultsDashboard({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <PriceMileageChart listings={listings} />
+              <PriceMileageChart
+                listings={listings}
+                onPointClick={handlePointClick}
+              />
             </CardContent>
           </Card>
 
@@ -254,7 +283,11 @@ export function ResultsDashboard({
                   </SortButton>
                 </div>
                 {sorted.map((l) => (
-                  <ListingCard key={l.id} listing={l} />
+                  <ListingCard
+                    key={l.id}
+                    listing={l}
+                    highlighted={highlightId === l.id}
+                  />
                 ))}
               </div>
 
@@ -295,7 +328,14 @@ export function ResultsDashboard({
                   </TableHeader>
                   <TableBody>
                     {sorted.map((l) => (
-                      <TableRow key={l.id}>
+                      <TableRow
+                        key={l.id}
+                        data-listing-id={l.id}
+                        className={cn(
+                          "transition-colors",
+                          highlightId === l.id && "bg-primary/10",
+                        )}
+                      >
                         <TableCell className="max-w-[280px]">
                           <span className="line-clamp-1 font-medium">
                             {l.title || `${l.brand} ${l.model}`}
@@ -387,9 +427,21 @@ function DealRow({ listing }: { listing: Listing }) {
   )
 }
 
-function ListingCard({ listing }: { listing: Listing }) {
+function ListingCard({
+  listing,
+  highlighted,
+}: {
+  listing: Listing
+  highlighted?: boolean
+}) {
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border p-3">
+    <div
+      data-listing-id={listing.id}
+      className={cn(
+        "flex flex-col gap-2 rounded-xl border border-border p-3 transition-colors",
+        highlighted && "border-primary bg-primary/10",
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <span className="line-clamp-2 text-sm font-medium">
           {listing.title || `${listing.brand} ${listing.model}`}

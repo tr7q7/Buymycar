@@ -23,13 +23,24 @@ try:
 except ImportError:
     pass
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.core.config import settings
+from apps.api.db import init_db
 from apps.api.routers import health, catalog, search
 
-app = FastAPI(title=settings.app_name, version=settings.version)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Crée les tables (crédits / paiements / recherches) au démarrage.
+    init_db()
+    yield
+
+
+app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

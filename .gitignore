@@ -16,3 +16,7 @@ st_err.txt
 
 # Store pnpm local (artefact d'install frontend, volumineux)
 .pnpm-store/
+
+# Base SQLite locale (données de dev — jamais versionnées)
+*.db
+autocote.db

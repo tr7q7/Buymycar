@@ -30,7 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.core.config import settings
 from apps.api.db import init_db
-from apps.api.routers import health, catalog, search, credits
+from apps.api.routers import health, catalog, search, credits, checkout, stripe_webhook
 
 
 @asynccontextmanager
@@ -54,6 +54,8 @@ app.include_router(health.router)
 app.include_router(catalog.router)
 app.include_router(search.router)
 app.include_router(credits.router)
+app.include_router(checkout.router)
+app.include_router(stripe_webhook.router)
 
 
 @app.get("/", tags=["health"])

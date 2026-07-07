@@ -30,7 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.core.config import settings
 from apps.api.db import init_db
-from apps.api.routers import health, catalog, search
+from apps.api.routers import health, catalog, search, credits
 
 
 @asynccontextmanager
@@ -53,6 +53,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(catalog.router)
 app.include_router(search.router)
+app.include_router(credits.router)
 
 
 @app.get("/", tags=["health"])

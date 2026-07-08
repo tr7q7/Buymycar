@@ -73,7 +73,8 @@ Carte de test : **`4242 4242 4242 4242`**, date future, CVC quelconque, code pos
 
 | Risque | Impact | Mitigation actuelle / plus tard |
 |---|---|---|
-| **Email non vérifié** | Tier gratuit « farmable » (nouvel email = 2 gratuits) ; un tiers peut consommer les crédits d'un email connu | Accepté pour un MVP à 2 € ; plus tard : vérification email / lien magique |
+| **Email non vérifié** | Un tiers peut consommer les crédits d'un email connu | Accepté pour un MVP à 2 € ; plus tard : vérification email / lien magique |
+| **Anti-abus contournable** | Le blocage par appareil (`visitor_id`) est efficace contre les changements d'email simples, mais contournable (navigation privée, effacement du localStorage, autre appareil) | Suffisant pour dissuader l'abus courant ; renforcer plus tard (empreinte serveur/IP, vérif email) |
 | **Pas de remboursement auto** si le job échoue après décrément | 1 crédit perdu en cas de panne Piloterr | Traçé dans `searches` ; remboursement manuel/auto à ajouter |
 | **JobManager en mémoire** | Un redeploy pendant une recherche perd le job en cours (crédit déjà débité) | Acceptable (rare) ; file Redis plus tard |
 | **Render free tier** | Cold start 30–60 s ; le 1er appel peut sembler lent | Passer en plan payant pour la prod sérieuse |
@@ -108,3 +109,39 @@ Carte de test : **`4242 4242 4242 4242`**, date future, CVC quelconque, code pos
 **Conclusion** : le code est prêt. Le lancement dépend d'une checklist de
 **déploiement/configuration** rigoureuse — les tests 1→7 en mode test Stripe sont le
 juge de paix avant d'ouvrir les paiements réels.
+
+---
+
+## 6. Passage en Stripe Live (à valider — NE PAS basculer sans checklist)
+
+> Le code **supporte déjà le mode Live sans aucune modification** : il lit
+> `STRIPE_SECRET_KEY` et `STRIPE_WEBHOOK_SECRET` depuis l'environnement ; les clés
+> test (`sk_test_…` / `whsec_…`) et live (`sk_live_…` / `whsec_…`) sont traitées à
+> l'identique par la librairie Stripe. **Aucune clé n'est committée.**
+
+**Ordre exact (après validation complète des tests en mode test) :**
+
+1. **Activer le compte** Stripe (Live) : informations société, IBAN de versement, KYC.
+2. **Clé secrète live** : Stripe (bascule « Test → Live ») → Développeurs → Clés API →
+   copier `sk_live_…`.
+3. **Webhook live** : Développeurs → Webhooks (mode **Live**) → Add endpoint
+   `https://autocote-api-f24d.onrender.com/stripe/webhook`, événement
+   `checkout.session.completed` → copier le **Signing secret** `whsec_…` (différent du test).
+4. **Remplacer sur Render** (service `autocote-api` → Environment) :
+   | Variable | Ancienne (test) | Nouvelle (live) |
+   |---|---|---|
+   | `STRIPE_SECRET_KEY` | `sk_test_…` | **`sk_live_…`** |
+   | `STRIPE_WEBHOOK_SECRET` | `whsec_…` (test) | **`whsec_…` (live)** |
+   Les autres variables (`FRONTEND_URL`, `STRIPE_PRICE_AMOUNT=200`, `STRIPE_CURRENCY=eur`,
+   `DATABASE_URL`, `CORS_ORIGINS`, `PILOTERR_API_KEY`) **ne changent pas**.
+5. **Redéployer** l'API (automatique au changement d'env).
+6. **Test avec un vrai paiement** : depuis le site, acheter un pack avec une **vraie
+   carte** (2 € réels).
+7. **Vérifier les crédits** : le solde de l'email passe bien à **+10** (webhook live OK).
+8. **Vérifier le solde Stripe** : Dashboard Stripe (Live) → Paiements → le paiement de
+   2 € apparaît « réussi » et le solde à venir est crédité.
+9. **Rollback possible** : en cas de souci, remettre les clés **test** sur Render et
+   redéployer — aucun changement de code.
+
+> ⚠️ Ne jamais committer `sk_live_…` / `whsec_…`. Ces valeurs vivent uniquement dans
+> les variables d'environnement Render.

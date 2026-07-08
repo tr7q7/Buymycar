@@ -98,13 +98,50 @@ class TestCreditsService:
         assert credits_service.get_credits(db, "pro@garage.fr") == 2
 
 
+# ── Anti-abus visitor_id ──────────────────────────────────────────────────────
+
+class TestVisitorAntiAbuse:
+    def test_nouvel_email_nouvel_appareil_2_credits(self, db):
+        c, blocked = credits_service.init_free_credits(db, "a@b.fr", "device-1")
+        assert c.credits_remaining == 2
+        assert blocked is False
+
+    def test_nouvel_email_meme_appareil_pas_de_credits(self, db):
+        credits_service.init_free_credits(db, "a@b.fr", "device-1")
+        c2, blocked = credits_service.init_free_credits(db, "autre@b.fr", "device-1")
+        assert c2.credits_remaining == 0
+        assert blocked is True
+
+    def test_email_existant_inchange(self, db):
+        credits_service.init_free_credits(db, "a@b.fr", "device-1")
+        credits_service.decrement(db, "a@b.fr")  # 2 -> 1
+        c, blocked = credits_service.init_free_credits(db, "a@b.fr", "device-1")
+        assert c.credits_remaining == 1  # pas remis à 2
+        assert blocked is False
+
+    def test_sans_visitor_id_comportement_historique(self, db):
+        c, blocked = credits_service.init_free_credits(db, "a@b.fr", None)
+        assert c.credits_remaining == 2
+        assert blocked is False
+
+    def test_appareils_differents_chacun_ses_credits(self, db):
+        c1, _ = credits_service.init_free_credits(db, "a@b.fr", "device-1")
+        c2, blocked = credits_service.init_free_credits(db, "b@b.fr", "device-2")
+        assert c1.credits_remaining == 2
+        assert c2.credits_remaining == 2
+        assert blocked is False
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 class TestCreditsRouter:
     def test_init_cree_2_credits(self, client):
         r = client.post("/credits/init", json={"email": "pro@garage.fr"})
         assert r.status_code == 200
-        assert r.json() == {"email": "pro@garage.fr", "credits_remaining": 2}
+        body = r.json()
+        assert body["email"] == "pro@garage.fr"
+        assert body["credits_remaining"] == 2
+        assert body["device_blocked"] is False
 
     def test_init_repete_ne_double_pas(self, client):
         client.post("/credits/init", json={"email": "pro@garage.fr"})
@@ -120,3 +157,12 @@ class TestCreditsRouter:
     def test_email_invalide_rejete(self, client):
         r = client.post("/credits/init", json={"email": "pasunemail"})
         assert r.status_code == 422
+
+    def test_init_meme_appareil_bloque(self, client):
+        client.post("/credits/init", json={"email": "a@b.fr", "visitor_id": "dev-x"})
+        r = client.post(
+            "/credits/init", json={"email": "autre@b.fr", "visitor_id": "dev-x"}
+        )
+        body = r.json()
+        assert body["credits_remaining"] == 0
+        assert body["device_blocked"] is True

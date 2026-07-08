@@ -18,6 +18,7 @@ router = APIRouter(prefix="/credits", tags=["credits"])
 
 class CreditsInitRequest(BaseModel):
     email: str
+    visitor_id: str = ""
 
     @field_validator("email")
     @classmethod
@@ -28,12 +29,19 @@ class CreditsInitRequest(BaseModel):
 class CreditsOut(BaseModel):
     email: str
     credits_remaining: int
+    device_blocked: bool = False
 
 
 @router.post("/init", response_model=CreditsOut)
 def init_credits(req: CreditsInitRequest, db: Session = Depends(get_db)) -> CreditsOut:
-    customer = credits_service.get_or_create(db, req.email)
-    return CreditsOut(email=customer.email, credits_remaining=customer.credits_remaining)
+    customer, device_blocked = credits_service.init_free_credits(
+        db, req.email, req.visitor_id
+    )
+    return CreditsOut(
+        email=customer.email,
+        credits_remaining=customer.credits_remaining,
+        device_blocked=device_blocked,
+    )
 
 
 @router.get("", response_model=CreditsOut)

@@ -143,12 +143,7 @@ export function ResultsDashboard({
       {/* 1) Context bar */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onNewSearch}
-            className="-ml-2"
-          >
+          <Button onClick={onNewSearch} className="h-10">
             <ArrowLeft data-icon="inline-start" />
             Nouvelle analyse
           </Button>
@@ -366,6 +361,15 @@ export function ResultsDashboard({
               </div>
             </CardContent>
           </Card>
+
+          {/* Relance rapide en bas de page (email et crédits conservés). */}
+          <Button
+            onClick={onNewSearch}
+            className="h-11 w-full sm:mx-auto sm:w-auto sm:px-8"
+          >
+            <ArrowLeft data-icon="inline-start" />
+            Nouvelle analyse
+          </Button>
         </>
       )}
     </motion.div>

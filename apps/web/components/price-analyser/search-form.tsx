@@ -21,16 +21,15 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import {
   ApiError,
   NeedCreditsError,
-  createCheckoutSession,
   fetchBrands,
   fetchFuels,
   fetchJob,
   fetchModels,
   fuelLabel,
-  initCredits,
   startSearch,
   type SearchJobResult,
 } from "@/lib/api"
+import { useCredits } from "@/lib/credits-store"
 
 import { YearRangeSlider } from "./year-range-slider"
 import { LoadingState } from "./loading-state"
@@ -40,12 +39,6 @@ import { ResultsDashboard } from "./results-dashboard"
 
 const POLL_INTERVAL_MS = 2000
 const POLL_TIMEOUT_MS = 4 * 60 * 1000
-const EMAIL_STORAGE_KEY = "autocote_email"
-
-function isValidEmail(value: string): boolean {
-  const v = value.trim()
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
-}
 
 type Status = "idle" | "loading" | "done" | "error" | "results"
 
@@ -83,78 +76,20 @@ export function SearchForm({
     yearMax: number
   }>()
 
-  // --- Email & crédits ---
-  const [email, setEmail] = React.useState("")
-  const [credits, setCredits] = React.useState<number | null>(null)
-  const [checkoutLoading, setCheckoutLoading] = React.useState(false)
-  const [buyError, setBuyError] = React.useState("")
-  const [justPaid, setJustPaid] = React.useState(false)
-  const emailValid = isValidEmail(email)
-
-  // Charge (et crée si besoin) les crédits d'un email. Idempotent côté API.
-  const loadCredits = React.useCallback(async (mail: string) => {
-    if (!isValidEmail(mail)) return
-    try {
-      const data = await initCredits(mail)
-      setCredits(data.credits_remaining)
-    } catch {
-      // On garde l'état précédent en cas d'indisponibilité réseau.
-    }
-  }, [])
-
-  // Au montage : email mémorisé + retour éventuel de Stripe (?payment=success).
-  React.useEffect(() => {
-    if (typeof window === "undefined") return
-    const stored = window.localStorage.getItem(EMAIL_STORAGE_KEY)
-    if (stored) {
-      setEmail(stored)
-      void loadCredits(stored)
-    }
-    const params = new URLSearchParams(window.location.search)
-    const isSuccess = params.get("payment") === "success"
-    // Flag sessionStorage : survit au double-montage StrictMode (dev) et à un
-    // éventuel nettoyage d'URL antérieur, pour ne pas perdre le message.
-    const paidFlag = window.sessionStorage.getItem("autocote_just_paid") === "1"
-    if (isSuccess) {
-      window.sessionStorage.setItem("autocote_just_paid", "1")
-      params.delete("payment")
-      params.delete("session_id")
-      const qs = params.toString()
-      window.history.replaceState(
-        {},
-        "",
-        window.location.pathname + (qs ? `?${qs}` : ""),
-      )
-    }
-    if (isSuccess || paidFlag) {
-      setJustPaid(true)
-      if (stored) void loadCredits(stored)
-      window.setTimeout(() => {
-        setJustPaid(false)
-        window.sessionStorage.removeItem("autocote_just_paid")
-      }, 6000)
-    }
-  }, [loadCredits])
-
-  function handleEmailBlur() {
-    if (!emailValid) return
-    const normalized = email.trim().toLowerCase()
-    window.localStorage.setItem(EMAIL_STORAGE_KEY, normalized)
-    void loadCredits(normalized)
-  }
-
-  async function handleBuy() {
-    if (!emailValid) return
-    setBuyError("")
-    setCheckoutLoading(true)
-    try {
-      const { url } = await createCheckoutSession(email.trim().toLowerCase())
-      window.location.href = url
-    } catch {
-      setCheckoutLoading(false)
-      setBuyError("Paiement momentanément indisponible.")
-    }
-  }
+  // --- Email & crédits (état partagé via le contexte, compteur global en haut) ---
+  const {
+    email,
+    setEmail,
+    emailValid,
+    credits,
+    setCredits,
+    deviceBlocked,
+    persistAndLoad,
+    buy,
+    checkoutLoading,
+    buyError,
+    visitorId,
+  } = useCredits()
 
   // Notify the parent so it can widen the layout for the results view.
   React.useEffect(() => {
@@ -245,6 +180,7 @@ export function SearchForm({
       const job = await startSearch(
         {
           email: email.trim().toLowerCase(),
+          visitor_id: visitorId,
           brand,
           model,
           fuel,
@@ -303,7 +239,7 @@ export function SearchForm({
       )
       setStatus("error")
     }
-  }, [email, brand, model, fuel, years, onAnalysisComplete, stopTimers])
+  }, [email, visitorId, brand, model, fuel, years, setCredits, onAnalysisComplete, stopTimers])
 
   function handleCancel() {
     stopTimers()
@@ -364,13 +300,6 @@ export function SearchForm({
                 }}
               >
                 <FieldGroup className="gap-5">
-                  {/* Bandeau paiement réussi */}
-                  {justPaid && (
-                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
-                      ✓ 10 analyses ajoutées à votre compte.
-                    </div>
-                  )}
-
                   {/* Email */}
                   <Field>
                     <FieldLabel htmlFor="email">Email</FieldLabel>
@@ -381,15 +310,13 @@ export function SearchForm({
                       autoComplete="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      onBlur={handleEmailBlur}
+                      onBlur={persistAndLoad}
                       placeholder="vous@garage.fr"
                       className="h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                     />
-                    {emailValid && credits != null && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {credits > 0
-                          ? `${credits} analyse${credits > 1 ? "s" : ""} restante${credits > 1 ? "s" : ""}`
-                          : "Crédits épuisés"}
+                    {deviceBlocked && (
+                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-500">
+                        Les crédits gratuits ont déjà été utilisés sur cet appareil.
                       </p>
                     )}
                   </Field>
@@ -503,7 +430,7 @@ export function SearchForm({
                       </p>
                       <Button
                         type="button"
-                        onClick={handleBuy}
+                        onClick={() => void buy()}
                         disabled={checkoutLoading}
                         className="mt-1 h-10 w-full"
                       >

@@ -1,4 +1,4 @@
-// Typed fetch helpers for the LCB Price Analyser catalog + search API.
+// Typed fetch helpers for the AutoCote catalog + search + credits API.
 // The base URL is always read from the environment — never hardcoded.
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? ""
@@ -9,6 +9,7 @@ export type SearchStatus = "pending" | "running" | "done" | "error"
 
 export interface SearchPayload {
   email: string
+  visitor_id: string
   brand: string
   model: string
   fuel: string
@@ -24,6 +25,23 @@ export interface SearchJob {
 export interface Credits {
   email: string
   credits_remaining: number
+  device_blocked?: boolean
+}
+
+const VISITOR_STORAGE_KEY = "autocote_visitor_id"
+
+/** Identifiant navigateur/appareil stable, persistant en localStorage. */
+export function getVisitorId(): string {
+  if (typeof window === "undefined") return ""
+  let id = window.localStorage.getItem(VISITOR_STORAGE_KEY)
+  if (!id) {
+    id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    window.localStorage.setItem(VISITOR_STORAGE_KEY, id)
+  }
+  return id
 }
 
 export interface Listing {
@@ -176,9 +194,11 @@ export async function startSearch(
   return (await res.json()) as SearchJob
 }
 
-/** Crée l'email avec 2 crédits gratuits s'il est inconnu ; renvoie le solde. */
+/** Crée l'email avec 2 crédits gratuits s'il est inconnu ; renvoie le solde.
+ * visitor_id applique l'anti-abus par appareil (device_blocked dans la réponse). */
 export async function initCredits(
   email: string,
+  visitorId?: string,
   signal?: AbortSignal,
 ): Promise<Credits> {
   let res: Response
@@ -186,7 +206,7 @@ export async function initCredits(
     res = await fetch(url("/credits/init"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, visitor_id: visitorId ?? "" }),
       signal,
     })
   } catch (err) {

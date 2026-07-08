@@ -18,6 +18,7 @@ from apps.api.credits_service import validate_email
 
 class SearchRequest(BaseModel):
     email: str = Field(..., examples=["pro@garage.fr"])
+    visitor_id: str = Field("", examples=["a1b2c3"])
     brand: str = Field(..., examples=["audi"])
     model: str = Field("", examples=["rs3"])
     fuel: str = Field(..., examples=["essence"])

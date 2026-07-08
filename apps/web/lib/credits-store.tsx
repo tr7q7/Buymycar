@@ -23,6 +23,7 @@ interface CreditsState {
   setCredits: React.Dispatch<React.SetStateAction<number | null>>
   deviceBlocked: boolean
   justPaid: boolean
+  paymentConfirming: boolean
   visitorId: string
   persistAndLoad: () => void
   buy: () => Promise<void>
@@ -37,6 +38,7 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
   const [credits, setCredits] = React.useState<number | null>(null)
   const [deviceBlocked, setDeviceBlocked] = React.useState(false)
   const [justPaid, setJustPaid] = React.useState(false)
+  const [paymentConfirming, setPaymentConfirming] = React.useState(false)
   const [checkoutLoading, setCheckoutLoading] = React.useState(false)
   const [buyError, setBuyError] = React.useState("")
   const [visitorId, setVisitorId] = React.useState("")
@@ -52,6 +54,38 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
         setDeviceBlocked(!!data.device_blocked)
       } catch {
         // On garde l'état précédent en cas d'indisponibilité réseau.
+      }
+    },
+    [],
+  )
+
+  // Retour de Stripe : le webhook qui crédite est ASYNCHRONE (et Render free tier
+  // peut démarrer à froid). On interroge donc /credits en boucle jusqu'à voir le
+  // solde augmenter, au lieu d'un seul appel qui lirait le solde d'avant crédit.
+  const confirmAfterPayment = React.useCallback(
+    async (mail: string, vid: string) => {
+      if (!isValidEmail(mail)) return
+      setPaymentConfirming(true)
+      let baseline: number | null = null
+      try {
+        for (let i = 0; i < 20; i++) {
+          try {
+            const data = await initCredits(mail, vid)
+            setCredits(data.credits_remaining)
+            setDeviceBlocked(!!data.device_blocked)
+            if (baseline === null) {
+              baseline = data.credits_remaining
+              if (baseline > 0) return // déjà crédité au 1er appel
+            } else if (data.credits_remaining > baseline) {
+              return // crédits ajoutés par le webhook
+            }
+          } catch {
+            // on retente
+          }
+          await new Promise((r) => window.setTimeout(r, 2000))
+        }
+      } finally {
+        setPaymentConfirming(false)
       }
     },
     [],
@@ -86,13 +120,13 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
     }
     if (isSuccess || paidFlag) {
       setJustPaid(true)
-      if (stored) void load(stored, vid)
+      if (stored) void confirmAfterPayment(stored, vid)
       window.setTimeout(() => {
         setJustPaid(false)
         window.sessionStorage.removeItem(PAID_FLAG_KEY)
-      }, 6000)
+      }, 8000)
     }
-  }, [load])
+  }, [load, confirmAfterPayment])
 
   const persistAndLoad = React.useCallback(() => {
     if (!emailValid) return
@@ -122,6 +156,7 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
     setCredits,
     deviceBlocked,
     justPaid,
+    paymentConfirming,
     visitorId,
     persistAndLoad,
     buy,

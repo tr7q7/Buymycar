@@ -11,6 +11,8 @@ Apple Pay / Google Pay s'affichent automatiquement dans Stripe Checkout pour les
 utilisateurs éligibles (aucune config de payment_method_types nécessaire).
 """
 
+import logging
+
 import stripe
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -18,6 +20,8 @@ from sqlalchemy.orm import Session
 from apps.api.core.config import settings
 from apps.api.db_models import Payment
 from apps.api import credits_service
+
+logger = logging.getLogger("autocote.stripe")
 
 # Un pack = 10 analyses.
 CREDITS_PER_PACK = 10
@@ -79,11 +83,20 @@ def handle_webhook_event(db: Session, payload: bytes, sig_header: str) -> dict:
     session = event["data"]["object"]
     session_id = session["id"]
     meta = session.get("metadata") or {}
-    email = meta.get("email") or session.get("customer_email")
+    customer_email = session.get("customer_email")
+    meta_email = meta.get("email")
+    email = meta_email or customer_email
     credits = int(meta.get("credits", CREDITS_PER_PACK))
     amount = session.get("amount_total") or 0
 
+    # Diagnostic (sans secret) — visible dans les logs Render.
+    logger.info(
+        "[stripe.webhook] reçu session=%s customer_email=%s metadata_email=%s credits=%s",
+        session_id, customer_email, meta_email, credits,
+    )
+
     if not email:
+        logger.warning("[stripe.webhook] email absent session=%s", session_id)
         return {"status": "skipped", "reason": "email absent"}
 
     email = credits_service.normalize_email(email)
@@ -103,9 +116,14 @@ def handle_webhook_event(db: Session, payload: bytes, sig_header: str) -> dict:
     except IntegrityError:
         # Webhook déjà traité pour cette session → aucun crédit ajouté.
         db.rollback()
+        logger.info("[stripe.webhook] déjà traité session=%s email=%s", session_id, email)
         return {"status": "already_processed", "session_id": session_id}
 
     balance = credits_service.add_credits(db, email, credits)
+    logger.info(
+        "[stripe.webhook] crédité email=%s +%s -> solde=%s (session=%s)",
+        email, credits, balance, session_id,
+    )
     return {
         "status": "credited",
         "email": email,

@@ -47,18 +47,46 @@ def env():
     engine.dispose()
 
 
-def _completed_event(session_id: str = "cs_1", email: str = "buy@test.fr") -> dict:
-    return {
-        "type": "checkout.session.completed",
-        "data": {
-            "object": {
-                "id": session_id,
-                "metadata": {"email": email, "credits": "10"},
-                "amount_total": 200,
-                "customer_email": email,
-            }
-        },
-    }
+class _StripeLikeObject:
+    """
+    Reproduit le comportement d'un StripeObject réel : indexation `obj[key]` OK,
+    mais `obj.get(...)` lève (comme en prod) — pour empêcher toute régression.
+    """
+
+    def __init__(self, data: dict):
+        self._data = data
+
+    def __getitem__(self, key):
+        value = self._data[key]
+        return _StripeLikeObject(value) if isinstance(value, dict) else value
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def __getattr__(self, name):
+        # Comme StripeObject : un attribut absent (ex. .get) devient une recherche
+        # de champ, qui lève AttributeError si absent.
+        try:
+            return self.__dict__["_data"][name]
+        except KeyError as e:
+            raise AttributeError(name) from e
+
+
+def _completed_event(session_id: str = "cs_1", email: str = "buy@test.fr"):
+    # Enveloppé en objet « façon Stripe » (sans .get) pour coller à la réalité.
+    return _StripeLikeObject(
+        {
+            "type": "checkout.session.completed",
+            "data": {
+                "object": {
+                    "id": session_id,
+                    "metadata": {"email": email, "credits": "10"},
+                    "amount_total": 200,
+                    "customer_email": email,
+                }
+            },
+        }
+    )
 
 
 def _post_webhook(client: TestClient):

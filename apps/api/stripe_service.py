@@ -36,6 +36,21 @@ class WebhookVerificationError(Exception):
     """Signature de webhook invalide ou corps illisible."""
 
 
+def _sget(obj, key, default=None):
+    """
+    Lecture sûre d'une clé, compatible StripeObject ET dict.
+
+    Les objets Stripe (StripeObject) ne supportent PAS `.get()` : `obj.get`
+    est résolu comme un champ nommé « get » et lève une erreur. On utilise donc
+    l'indexation `obj[key]`, gérée par StripeObject comme par dict.
+    """
+    try:
+        value = obj[key]
+    except (KeyError, TypeError):
+        return default
+    return default if value is None else value
+
+
 def create_checkout_session(email: str) -> str:
     """Crée une session Stripe Checkout et renvoie son URL de paiement."""
     if not settings.stripe_secret_key:
@@ -81,13 +96,13 @@ def handle_webhook_event(db: Session, payload: bytes, sig_header: str) -> dict:
         return {"status": "ignored", "type": event["type"]}
 
     session = event["data"]["object"]
-    session_id = session["id"]
-    meta = session.get("metadata") or {}
-    customer_email = session.get("customer_email")
-    meta_email = meta.get("email")
+    session_id = _sget(session, "id")
+    meta = _sget(session, "metadata") or {}
+    customer_email = _sget(session, "customer_email")
+    meta_email = _sget(meta, "email")
     email = meta_email or customer_email
-    credits = int(meta.get("credits", CREDITS_PER_PACK))
-    amount = session.get("amount_total") or 0
+    credits = int(_sget(meta, "credits", CREDITS_PER_PACK) or CREDITS_PER_PACK)
+    amount = _sget(session, "amount_total") or 0
 
     # Diagnostic (sans secret) — visible dans les logs Render.
     logger.info(

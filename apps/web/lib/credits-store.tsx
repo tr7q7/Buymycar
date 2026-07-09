@@ -137,10 +137,15 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
 
   const buy = React.useCallback(async () => {
     if (!emailValid) return
+    const normalized = email.trim().toLowerCase()
+    // Persiste l'email AVANT de partir vers Stripe : au retour (?payment=success),
+    // le compteur interroge exactement l'email qui a payé (et pas un ancien email
+    // resté en localStorage) → plus de crédits « invisibles ».
+    window.localStorage.setItem(EMAIL_STORAGE_KEY, normalized)
     setBuyError("")
     setCheckoutLoading(true)
     try {
-      const { url } = await createCheckoutSession(email.trim().toLowerCase())
+      const { url } = await createCheckoutSession(normalized)
       window.location.href = url
     } catch {
       setCheckoutLoading(false)

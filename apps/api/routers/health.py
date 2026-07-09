@@ -42,6 +42,11 @@ def diag(
     recent = (
         db.query(Payment).order_by(Payment.created_at.desc()).limit(5).all()
     )
+
+    def _balance(mail: str):
+        c = db.get(Customer, mail)
+        return c.credits_remaining if c else None
+
     out = {
         "db": engine.dialect.name,
         "customers": db.query(Customer).count(),
@@ -51,6 +56,7 @@ def diag(
             {
                 "email": _mask_email(p.email),
                 "credits_added": p.credits_added,
+                "current_balance": _balance(p.email),
                 "amount": p.amount,
                 "status": p.status,
                 "created_at": str(p.created_at),

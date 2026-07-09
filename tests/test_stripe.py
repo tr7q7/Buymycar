@@ -140,6 +140,23 @@ def test_webhook_type_ignore(env, monkeypatch):
     assert r.json()["status"] == "ignored"
 
 
+def test_webhook_multi_secret_test_et_live(env, monkeypatch):
+    # STRIPE_WEBHOOK_SECRET = "test,live" : la signature ne matche que le 2e secret.
+    client, _ = env
+    monkeypatch.setattr(settings, "stripe_webhook_secret", "whsec_test,whsec_live")
+
+    def construct(payload, sig, secret):
+        if secret != "whsec_live":
+            raise ValueError("signature invalide pour ce secret")
+        return _completed_event()
+
+    monkeypatch.setattr(stripe.Webhook, "construct_event", construct)
+
+    r = _post_webhook(client)
+    assert r.status_code == 200
+    assert r.json()["status"] == "credited"
+
+
 def test_webhook_signature_invalide_400(env, monkeypatch):
     client, _ = env
 

@@ -85,14 +85,28 @@ def handle_webhook_event(db: Session, payload: bytes, sig_header: str) -> dict:
     L'unicité de payments.stripe_session_id garantit qu'un webhook rejoué
     ne crédite pas une seconde fois.
     """
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, settings.stripe_webhook_secret
+    # STRIPE_WEBHOOK_SECRET peut contenir plusieurs secrets séparés par des virgules
+    # (ex. "whsec_test,whsec_live") : on essaie chacun jusqu'à ce que la signature
+    # soit valide → test ET live fonctionnent simultanément.
+    raw = settings.stripe_webhook_secret or ""
+    secrets = [s.strip() for s in raw.split(",") if s.strip()] or [raw]
+    event = None
+    last_err: Exception | None = None
+    for secret in secrets:
+        try:
+            event = stripe.Webhook.construct_event(payload, sig_header, secret)
+            break
+        except Exception as e:  # signature invalide pour ce secret
+            last_err = e
+    if event is None:
+        logger.warning(
+            "[stripe.webhook] signature invalide (aucun des %d secret(s) ne correspond) : %s",
+            len(secrets), last_err,
         )
-    except Exception as e:  # signature invalide, corps illisible…
-        raise WebhookVerificationError(str(e)) from e
+        raise WebhookVerificationError(str(last_err) if last_err else "secret manquant")
 
     if event["type"] != "checkout.session.completed":
+        logger.info("[stripe.webhook] événement ignoré type=%s", event["type"])
         return {"status": "ignored", "type": event["type"]}
 
     session = event["data"]["object"]

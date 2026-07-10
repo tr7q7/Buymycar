@@ -5,10 +5,12 @@ POST /checkout/create-session : {email} → {url} (URL de paiement Stripe Checko
 Le front redirige l'utilisateur vers cette URL.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
+from sqlalchemy.orm import Session
 
 from apps.api.credits_service import validate_email
+from apps.api.db import get_db
 from apps.api import stripe_service
 
 router = APIRouter(prefix="/checkout", tags=["checkout"])
@@ -27,6 +29,10 @@ class CheckoutOut(BaseModel):
     url: str
 
 
+class ConfirmRequest(BaseModel):
+    session_id: str
+
+
 @router.post("/create-session", response_model=CheckoutOut)
 def create_session(req: CheckoutRequest) -> CheckoutOut:
     try:
@@ -37,3 +43,19 @@ def create_session(req: CheckoutRequest) -> CheckoutOut:
             detail="Paiement momentanément indisponible.",
         )
     return CheckoutOut(url=url)
+
+
+@router.post("/confirm")
+def confirm(req: ConfirmRequest, db: Session = Depends(get_db)) -> dict:
+    """
+    Confirme un paiement au retour de Stripe (indépendant du webhook).
+
+    Le front appelle cet endpoint avec le session_id présent dans l'URL de retour ;
+    on récupère la session côté Stripe et on crédite si elle est payée. Idempotent.
+    """
+    try:
+        return stripe_service.confirm_checkout_session(db, req.session_id)
+    except stripe_service.StripeNotConfigured:
+        raise HTTPException(status_code=503, detail="Paiement momentanément indisponible.")
+    except Exception as e:  # session inconnue / erreur Stripe
+        raise HTTPException(status_code=400, detail=f"Session invalide : {e}")

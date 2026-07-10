@@ -12,13 +12,14 @@ utilisateurs éligibles (aucune config de payment_method_types nécessaire).
 """
 
 import logging
+from typing import Optional
 
 import stripe
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from apps.api.core.config import settings
-from apps.api.db_models import Payment
+from apps.api.db_models import Customer, Payment
 from apps.api import credits_service
 
 logger = logging.getLogger("autocote.stripe")
@@ -118,19 +119,34 @@ def handle_webhook_event(db: Session, payload: bytes, sig_header: str) -> dict:
     credits = int(_sget(meta, "credits", CREDITS_PER_PACK) or CREDITS_PER_PACK)
     amount = _sget(session, "amount_total") or 0
 
-    # Diagnostic (sans secret) — visible dans les logs Render.
     logger.info(
         "[stripe.webhook] reçu session=%s customer_email=%s metadata_email=%s credits=%s",
         session_id, customer_email, meta_email, credits,
     )
+    return _credit_session(db, session_id, email, credits, amount, source="webhook")
 
+
+def _credit_session(
+    db: Session,
+    session_id: str,
+    email: Optional[str],
+    credits: int,
+    amount: int,
+    source: str,
+) -> dict:
+    """
+    Crédite un email pour une session Stripe, de façon idempotente.
+
+    Utilisé par le webhook ET par la confirmation au retour : l'unicité de
+    payments.stripe_session_id garantit qu'un même paiement ne crédite qu'une fois,
+    même si le webhook et la confirmation arrivent tous les deux.
+    """
     if not email:
-        logger.warning("[stripe.webhook] email absent session=%s", session_id)
+        logger.warning("[stripe.%s] email absent session=%s", source, session_id)
         return {"status": "skipped", "reason": "email absent"}
 
     email = credits_service.normalize_email(email)
 
-    # Garde d'idempotence : on insère d'abord le paiement (PK = session_id).
     db.add(
         Payment(
             stripe_session_id=session_id,
@@ -143,15 +159,17 @@ def handle_webhook_event(db: Session, payload: bytes, sig_header: str) -> dict:
     try:
         db.commit()
     except IntegrityError:
-        # Webhook déjà traité pour cette session → aucun crédit ajouté.
+        # Déjà traité pour cette session → aucun crédit ajouté. On renvoie le solde.
         db.rollback()
-        logger.info("[stripe.webhook] déjà traité session=%s email=%s", session_id, email)
-        return {"status": "already_processed", "session_id": session_id}
+        customer = db.get(Customer, email)
+        balance = customer.credits_remaining if customer else None
+        logger.info("[stripe.%s] déjà traité session=%s email=%s", source, session_id, email)
+        return {"status": "already_processed", "email": email, "balance": balance}
 
     balance = credits_service.add_credits(db, email, credits)
     logger.info(
-        "[stripe.webhook] crédité email=%s +%s -> solde=%s (session=%s)",
-        email, credits, balance, session_id,
+        "[stripe.%s] crédité email=%s +%s -> solde=%s (session=%s)",
+        source, email, credits, balance, session_id,
     )
     return {
         "status": "credited",
@@ -159,3 +177,36 @@ def handle_webhook_event(db: Session, payload: bytes, sig_header: str) -> dict:
         "credits_added": credits,
         "balance": balance,
     }
+
+
+def confirm_checkout_session(db: Session, session_id: str) -> dict:
+    """
+    Confirme un paiement au retour de Stripe, SANS dépendre du webhook.
+
+    Récupère la session via l'API Stripe (clé secrète), vérifie qu'elle est payée,
+    puis crédite (idempotent, même garde que le webhook). Rend le système robuste
+    même si le webhook est mal configuré.
+    """
+    if not settings.stripe_secret_key:
+        raise StripeNotConfigured("STRIPE_SECRET_KEY absente.")
+
+    stripe.api_key = settings.stripe_secret_key
+    session = stripe.checkout.Session.retrieve(session_id)
+
+    payment_status = _sget(session, "payment_status")
+    if payment_status != "paid":
+        logger.info(
+            "[stripe.confirm] session=%s non payée (payment_status=%s)",
+            session_id, payment_status,
+        )
+        return {"status": "unpaid", "payment_status": payment_status}
+
+    meta = _sget(session, "metadata") or {}
+    email = _sget(meta, "email") or _sget(session, "customer_email")
+    credits = int(_sget(meta, "credits", CREDITS_PER_PACK) or CREDITS_PER_PACK)
+    amount = _sget(session, "amount_total") or 0
+
+    logger.info(
+        "[stripe.confirm] session=%s payée email=%s credits=%s", session_id, email, credits
+    )
+    return _credit_session(db, session_id, email, credits, amount, source="confirm")

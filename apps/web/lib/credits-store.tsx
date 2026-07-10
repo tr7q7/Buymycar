@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import {
+  confirmCheckout,
   createCheckoutSession,
   getVisitorId,
   initCredits,
@@ -10,6 +11,7 @@ import {
 
 const EMAIL_STORAGE_KEY = "autocote_email"
 const PAID_FLAG_KEY = "autocote_just_paid"
+const SESSION_ID_KEY = "autocote_session_id"
 
 export function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
@@ -59,15 +61,34 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
     [],
   )
 
-  // Retour de Stripe : le webhook qui crédite est ASYNCHRONE (et Render free tier
-  // peut démarrer à froid). On interroge donc /credits en boucle jusqu'à voir le
-  // solde augmenter, au lieu d'un seul appel qui lirait le solde d'avant crédit.
+  // Retour de Stripe : on crédite d'ABORD via /checkout/confirm (indépendant du
+  // webhook, source de vérité côté Stripe), puis on retombe sur un polling de
+  // /credits en secours. Ça fonctionne même si le webhook est mal configuré.
   const confirmAfterPayment = React.useCallback(
-    async (mail: string, vid: string) => {
-      if (!isValidEmail(mail)) return
+    async (mail: string, vid: string, sessionId: string) => {
+      if (!isValidEmail(mail) && !sessionId) return
       setPaymentConfirming(true)
-      let baseline: number | null = null
       try {
+        // 1) Confirmation directe via l'API (crédite selon la session Stripe).
+        if (sessionId) {
+          try {
+            const res = await confirmCheckout(sessionId)
+            // On aligne le compte affiché sur l'email qui a réellement payé.
+            if (res.email) {
+              setEmail(res.email)
+              window.localStorage.setItem(EMAIL_STORAGE_KEY, res.email)
+            }
+            if (typeof res.balance === "number") {
+              setCredits(res.balance)
+              return
+            }
+          } catch {
+            // on bascule sur le polling ci-dessous
+          }
+        }
+
+        // 2) Polling de secours (si pas de session_id ou confirmation indisponible).
+        let baseline: number | null = null
         for (let i = 0; i < 20; i++) {
           try {
             const data = await initCredits(mail, vid)
@@ -75,9 +96,9 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
             setDeviceBlocked(!!data.device_blocked)
             if (baseline === null) {
               baseline = data.credits_remaining
-              if (baseline > 0) return // déjà crédité au 1er appel
+              if (baseline > 0) return
             } else if (data.credits_remaining > baseline) {
-              return // crédits ajoutés par le webhook
+              return
             }
           } catch {
             // on retente
@@ -105,10 +126,12 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
 
     const params = new URLSearchParams(window.location.search)
     const isSuccess = params.get("payment") === "success"
-    // Flag sessionStorage : robuste au double-montage StrictMode (dev).
+    const sessionId = params.get("session_id")
+    // Flags sessionStorage : robustes au double-montage StrictMode + nettoyage d'URL.
     const paidFlag = window.sessionStorage.getItem(PAID_FLAG_KEY) === "1"
     if (isSuccess) {
       window.sessionStorage.setItem(PAID_FLAG_KEY, "1")
+      if (sessionId) window.sessionStorage.setItem(SESSION_ID_KEY, sessionId)
       params.delete("payment")
       params.delete("session_id")
       const qs = params.toString()
@@ -118,12 +141,15 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
         window.location.pathname + (qs ? `?${qs}` : ""),
       )
     }
+    const pendingSession =
+      sessionId || window.sessionStorage.getItem(SESSION_ID_KEY) || ""
     if (isSuccess || paidFlag) {
       setJustPaid(true)
-      if (stored) void confirmAfterPayment(stored, vid)
+      void confirmAfterPayment(stored || "", vid, pendingSession)
       window.setTimeout(() => {
         setJustPaid(false)
         window.sessionStorage.removeItem(PAID_FLAG_KEY)
+        window.sessionStorage.removeItem(SESSION_ID_KEY)
       }, 8000)
     }
   }, [load, confirmAfterPayment])

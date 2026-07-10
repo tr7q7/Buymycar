@@ -190,3 +190,48 @@ def test_checkout_cree_session_et_renvoie_url(env, monkeypatch):
     r = client.post("/checkout/create-session", json={"email": "a@b.fr"})
     assert r.status_code == 200
     assert r.json()["url"].startswith("https://checkout.stripe.com/")
+
+
+# ── Confirmation au retour (indépendante du webhook) ──────────────────────────
+
+def test_confirm_credite_et_idempotent(env, monkeypatch):
+    client, _ = env
+    monkeypatch.setattr(settings, "stripe_secret_key", "sk_test_x")
+
+    def retrieve(sid):
+        return _StripeLikeObject(
+            {
+                "id": sid,
+                "payment_status": "paid",
+                "metadata": {"email": "conf@test.fr", "credits": "5"},
+                "amount_total": 200,
+                "customer_email": "conf@test.fr",
+            }
+        )
+
+    monkeypatch.setattr(stripe.checkout.Session, "retrieve", retrieve)
+
+    r = client.post("/checkout/confirm", json={"session_id": "cs_conf_1"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "credited"
+    assert r.json()["balance"] == 5
+
+    # Rejoué : idempotent (aucun double crédit).
+    r2 = client.post("/checkout/confirm", json={"session_id": "cs_conf_1"})
+    assert r2.json()["status"] == "already_processed"
+    assert r2.json()["balance"] == 5
+
+
+def test_confirm_session_non_payee(env, monkeypatch):
+    client, _ = env
+    monkeypatch.setattr(settings, "stripe_secret_key", "sk_test_x")
+    monkeypatch.setattr(
+        stripe.checkout.Session,
+        "retrieve",
+        lambda sid: _StripeLikeObject(
+            {"id": sid, "payment_status": "unpaid", "metadata": {}}
+        ),
+    )
+    r = client.post("/checkout/confirm", json={"session_id": "cs_unpaid"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "unpaid"

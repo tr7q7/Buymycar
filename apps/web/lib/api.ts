@@ -227,6 +227,30 @@ export function getCredits(email: string, signal?: AbortSignal): Promise<Credits
   )
 }
 
+/** Confirme un paiement au retour de Stripe (indépendant du webhook).
+ * Renvoie le solde à jour si la session est payée. */
+export async function confirmCheckout(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<{ status: string; balance?: number | null; email?: string }> {
+  let res: Response
+  try {
+    res = await fetch(url("/checkout/confirm"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId }),
+      signal,
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err
+    throw new ApiError("Service momentanément indisponible.")
+  }
+  if (!res.ok) {
+    throw new ApiError("Confirmation du paiement indisponible.")
+  }
+  return (await res.json()) as { status: string; balance?: number | null; email?: string }
+}
+
 /** Crée une session Stripe Checkout (pack de 5 analyses) et renvoie l'URL. */
 export async function createCheckoutSession(
   email: string,

@@ -436,7 +436,7 @@ export function SearchForm({
                       >
                         {checkoutLoading
                           ? "Redirection…"
-                          : "Acheter 10 analyses — 2 €"}
+                          : "Acheter 5 analyses — 2 €"}
                       </Button>
                       {buyError && (
                         <p className="text-sm text-destructive">{buyError}</p>

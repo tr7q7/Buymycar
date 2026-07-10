@@ -3,7 +3,7 @@
 Référence unique jusqu'au lancement officiel. Dernier audit : **2026-07-07**.
 
 Produit : recherche de cote automobile. Modèle : **2 analyses gratuites par email,
-puis pack de 10 analyses pour 2 €** (Stripe Checkout, sans compte ni abonnement).
+puis pack de 5 analyses pour 2 €** (Stripe Checkout, sans compte ni abonnement).
 
 ---
 
@@ -56,9 +56,9 @@ Carte de test : **`4242 4242 4242 4242`**, date future, CVC quelconque, code pos
 
 1. **Crédits gratuits** : ouvrir le site, saisir un email neuf → « 2 analyses restantes ».
 2. **Recherche** : lancer une analyse (ex. Renault Clio Diesel) → résultats + « 1 analyse restante ».
-3. **Épuisement** : relancer jusqu'à 0 → le bouton « Acheter 10 analyses — 2 € » apparaît.
+3. **Épuisement** : relancer jusqu'à 0 → le bouton « Acheter 5 analyses — 2 € » apparaît.
 4. **Paiement test** : cliquer → Stripe Checkout → payer avec `4242…` → retour sur le site.
-5. **Crédit après paiement** : le message « 10 analyses ajoutées » s'affiche, le solde passe à **10**.
+5. **Crédit après paiement** : le message de confirmation s'affiche, le solde passe à **5**.
 6. **Idempotence** : dans Stripe → Webhooks → renvoyer l'événement `checkout.session.completed` → le solde **reste 10** (pas 20).
 7. **Persistance** : redéployer l'API → le solde de l'email est **conservé** (valide Postgres).
 8. **Sécurité front** : DevTools → onglet Réseau → aucun `sk_test`/`sk_live` ; appels vers l'API Render.

@@ -227,7 +227,7 @@ export function getCredits(email: string, signal?: AbortSignal): Promise<Credits
   )
 }
 
-/** Crée une session Stripe Checkout (pack de 10 analyses) et renvoie l'URL. */
+/** Crée une session Stripe Checkout (pack de 5 analyses) et renvoie l'URL. */
 export async function createCheckoutSession(
   email: string,
   signal?: AbortSignal,

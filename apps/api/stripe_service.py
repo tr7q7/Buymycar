@@ -2,7 +2,7 @@
 Service Stripe — Checkout (prix dynamique) et traitement du webhook.
 
 - Création de session : mode "payment" (jamais d'abonnement), prix dynamique
-  price_data (montant/devise depuis la config), pack de 10 crédits.
+  price_data (montant/devise depuis la config), pack de 5 crédits.
 - Webhook : vérification de signature + crédit idempotent (table payments, PK =
   stripe_session_id → un webhook répété ne crédite jamais deux fois).
 
@@ -23,9 +23,9 @@ from apps.api import credits_service
 
 logger = logging.getLogger("autocote.stripe")
 
-# Un pack = 10 analyses.
-CREDITS_PER_PACK = 10
-PRODUCT_NAME = "Pack 10 analyses AutoCote"
+# Un pack = 5 analyses.
+CREDITS_PER_PACK = 5
+PRODUCT_NAME = "Pack 5 analyses AutoCote"
 
 
 class StripeNotConfigured(Exception):

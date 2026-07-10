@@ -80,7 +80,7 @@ def _completed_event(session_id: str = "cs_1", email: str = "buy@test.fr"):
             "data": {
                 "object": {
                     "id": session_id,
-                    "metadata": {"email": email, "credits": "10"},
+                    "metadata": {"email": email, "credits": "5"},
                     "amount_total": 200,
                     "customer_email": email,
                 }
@@ -97,7 +97,7 @@ def _post_webhook(client: TestClient):
 
 # ── Webhook ───────────────────────────────────────────────────────────────────
 
-def test_webhook_credite_10(env, monkeypatch):
+def test_webhook_credite_pack(env, monkeypatch):
     client, Session = env
     monkeypatch.setattr(stripe.Webhook, "construct_event",
                         lambda *a, **k: _completed_event())
@@ -106,9 +106,9 @@ def test_webhook_credite_10(env, monkeypatch):
     assert r.status_code == 200
     assert r.json()["status"] == "credited"
 
-    # +10 crédits pour l'email
+    # +5 crédits pour l'email
     bal = client.get("/credits", params={"email": "buy@test.fr"}).json()
-    assert bal["credits_remaining"] == 10
+    assert bal["credits_remaining"] == 5
 
     # paiement enregistré
     s = Session()
@@ -126,7 +126,7 @@ def test_webhook_repete_ne_credite_pas_deux_fois(env, monkeypatch):
     assert r2.json()["status"] == "already_processed"
 
     bal = client.get("/credits", params={"email": "buy@test.fr"}).json()
-    assert bal["credits_remaining"] == 10  # crédité une seule fois
+    assert bal["credits_remaining"] == 5  # crédité une seule fois
 
 
 def test_webhook_type_ignore(env, monkeypatch):

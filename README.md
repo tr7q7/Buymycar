@@ -5,7 +5,7 @@ en temps réel. Un pro saisit marque / modèle / carburant / années et obtient 
 valeur de marché estimée, un graphique prix vs kilométrage, les meilleures affaires
 et le détail des annonces.
 
-Monétisation MVP : **2 analyses gratuites par email**, puis **pack de 10 analyses
+Monétisation MVP : **2 analyses gratuites par email**, puis **pack de 5 analyses
 pour 2 €** via Stripe Checkout (sans compte, sans abonnement).
 
 ## Architecture (monorepo)

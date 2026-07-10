@@ -1,5 +1,5 @@
 """
-Checkout — création d'une session Stripe pour acheter un pack de 10 analyses.
+Checkout — création d'une session Stripe pour acheter un pack de 5 analyses.
 
 POST /checkout/create-session : {email} → {url} (URL de paiement Stripe Checkout).
 Le front redirige l'utilisateur vers cette URL.

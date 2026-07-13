@@ -254,6 +254,7 @@ export async function confirmCheckout(
 /** Crée une session Stripe Checkout (pack de 5 analyses) et renvoie l'URL. */
 export async function createCheckoutSession(
   email: string,
+  visitorId?: string,
   signal?: AbortSignal,
 ): Promise<{ url: string }> {
   let res: Response
@@ -261,7 +262,7 @@ export async function createCheckoutSession(
     res = await fetch(url("/checkout/create-session"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, visitor_id: visitorId ?? "" }),
       signal,
     })
   } catch (err) {

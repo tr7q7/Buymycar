@@ -18,6 +18,7 @@ router = APIRouter(prefix="/checkout", tags=["checkout"])
 
 class CheckoutRequest(BaseModel):
     email: str
+    visitor_id: str = ""
 
     @field_validator("email")
     @classmethod
@@ -36,7 +37,7 @@ class ConfirmRequest(BaseModel):
 @router.post("/create-session", response_model=CheckoutOut)
 def create_session(req: CheckoutRequest) -> CheckoutOut:
     try:
-        url = stripe_service.create_checkout_session(req.email)
+        url = stripe_service.create_checkout_session(req.email, req.visitor_id)
     except stripe_service.StripeNotConfigured:
         raise HTTPException(
             status_code=503,

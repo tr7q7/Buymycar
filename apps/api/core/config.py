@@ -37,5 +37,11 @@ class Settings:
         default_factory=lambda: _env("FRONTEND_URL", "http://localhost:3000").rstrip("/")
     )
 
+    # ── PostHog (analytics produit, backend) ──────────────────────────────────
+    posthog_api_key: str = field(default_factory=lambda: _env("POSTHOG_API_KEY"))
+    posthog_host: str = field(
+        default_factory=lambda: _env("POSTHOG_HOST", "https://eu.i.posthog.com")
+    )
+
 
 settings = Settings()

@@ -30,6 +30,7 @@ import {
   type SearchJobResult,
 } from "@/lib/api"
 import { useCredits } from "@/lib/credits-store"
+import { track } from "@/lib/analytics"
 
 import { YearRangeSlider } from "./year-range-slider"
 import { LoadingState } from "./loading-state"
@@ -89,6 +90,7 @@ export function SearchForm({
     checkoutLoading,
     buyError,
     visitorId,
+    hasPaid,
   } = useCredits()
 
   // Notify the parent so it can widen the layout for the results view.
@@ -168,6 +170,14 @@ export function SearchForm({
       yearMax: years[1],
     })
 
+    track("analysis_started", {
+      brand,
+      model,
+      fuel,
+      year_min: years[0],
+      year_max: years[1],
+    })
+
     const controller = new AbortController()
     abortRef.current = controller
     startRef.current = Date.now()
@@ -192,6 +202,9 @@ export function SearchForm({
 
       // Recherche acceptée → un crédit vient d'être consommé côté serveur.
       setCredits((c) => (c != null && c > 0 ? c - 1 : c))
+      track(hasPaid ? "paid_analysis" : "free_credit_used", {
+        credits_left: credits != null && credits > 0 ? credits - 1 : 0,
+      })
 
       pollTimer.current = setInterval(async () => {
         // Timeout guard.
@@ -208,6 +221,10 @@ export function SearchForm({
             stopTimers()
             setResult(res.result)
             setStatus("done")
+            track("analysis_completed", {
+              retained: res.result?.filter?.retained ?? 0,
+              market_value: res.result?.market_estimate?.estimated ?? null,
+            })
             onAnalysisComplete?.(res.result)
           } else if (res.status === "error") {
             stopTimers()
@@ -239,7 +256,7 @@ export function SearchForm({
       )
       setStatus("error")
     }
-  }, [email, visitorId, brand, model, fuel, years, setCredits, onAnalysisComplete, stopTimers])
+  }, [email, visitorId, brand, model, fuel, years, credits, hasPaid, setCredits, onAnalysisComplete, stopTimers])
 
   function handleCancel() {
     stopTimers()

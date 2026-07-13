@@ -10,3 +10,4 @@ SQLAlchemy>=2.0.0
 # Pilote Postgres pour Render (DATABASE_URL=postgresql://…). Inutile en SQLite local.
 psycopg2-binary>=2.9.0
 stripe>=9.0.0
+posthog>=3.7.0

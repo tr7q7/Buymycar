@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from apps.api.core.config import settings
 from apps.api.db_models import Customer, Payment
 from apps.api import credits_service
+from apps.api import analytics
 
 logger = logging.getLogger("autocote.stripe")
 
@@ -52,7 +53,7 @@ def _sget(obj, key, default=None):
     return default if value is None else value
 
 
-def create_checkout_session(email: str) -> str:
+def create_checkout_session(email: str, visitor_id: str = "") -> str:
     """Crée une session Stripe Checkout et renvoie son URL de paiement."""
     if not settings.stripe_secret_key:
         raise StripeNotConfigured("STRIPE_SECRET_KEY absente.")
@@ -71,7 +72,8 @@ def create_checkout_session(email: str) -> str:
                 "quantity": 1,
             }
         ],
-        metadata={"email": email, "credits": str(CREDITS_PER_PACK)},
+        # visitor_id : relie payment_completed (backend) au distinct_id PostHog du front.
+        metadata={"email": email, "credits": str(CREDITS_PER_PACK), "visitor_id": visitor_id},
         success_url=f"{settings.frontend_url}/?payment=success&session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{settings.frontend_url}/?payment=cancel",
     )
@@ -118,12 +120,13 @@ def handle_webhook_event(db: Session, payload: bytes, sig_header: str) -> dict:
     email = meta_email or customer_email
     credits = int(_sget(meta, "credits", CREDITS_PER_PACK) or CREDITS_PER_PACK)
     amount = _sget(session, "amount_total") or 0
+    visitor_id = _sget(meta, "visitor_id") or ""
 
     logger.info(
         "[stripe.webhook] reçu session=%s customer_email=%s metadata_email=%s credits=%s",
         session_id, customer_email, meta_email, credits,
     )
-    return _credit_session(db, session_id, email, credits, amount, source="webhook")
+    return _credit_session(db, session_id, email, credits, amount, source="webhook", visitor_id=visitor_id)
 
 
 def _credit_session(
@@ -133,6 +136,7 @@ def _credit_session(
     credits: int,
     amount: int,
     source: str,
+    visitor_id: str = "",
 ) -> dict:
     """
     Crédite un email pour une session Stripe, de façon idempotente.
@@ -171,6 +175,11 @@ def _credit_session(
         "[stripe.%s] crédité email=%s +%s -> solde=%s (session=%s)",
         source, email, credits, balance, session_id,
     )
+    analytics.track(
+        visitor_id or email,
+        "payment_completed",
+        {"email": email, "credits_added": credits, "amount": amount, "source": source},
+    )
     return {
         "status": "credited",
         "email": email,
@@ -205,8 +214,9 @@ def confirm_checkout_session(db: Session, session_id: str) -> dict:
     email = _sget(meta, "email") or _sget(session, "customer_email")
     credits = int(_sget(meta, "credits", CREDITS_PER_PACK) or CREDITS_PER_PACK)
     amount = _sget(session, "amount_total") or 0
+    visitor_id = _sget(meta, "visitor_id") or ""
 
     logger.info(
         "[stripe.confirm] session=%s payée email=%s credits=%s", session_id, email, credits
     )
-    return _credit_session(db, session_id, email, credits, amount, source="confirm")
+    return _credit_session(db, session_id, email, credits, amount, source="confirm", visitor_id=visitor_id)

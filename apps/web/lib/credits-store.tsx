@@ -8,10 +8,12 @@ import {
   getVisitorId,
   initCredits,
 } from "@/lib/api"
+import { identifyEmail, track } from "@/lib/analytics"
 
 const EMAIL_STORAGE_KEY = "autocote_email"
 const PAID_FLAG_KEY = "autocote_just_paid"
 const SESSION_ID_KEY = "autocote_session_id"
+const HAS_PAID_KEY = "autocote_has_paid"
 
 export function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
@@ -27,6 +29,7 @@ interface CreditsState {
   justPaid: boolean
   paymentConfirming: boolean
   visitorId: string
+  hasPaid: boolean
   persistAndLoad: () => void
   buy: () => Promise<void>
   checkoutLoading: boolean
@@ -44,8 +47,14 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
   const [checkoutLoading, setCheckoutLoading] = React.useState(false)
   const [buyError, setBuyError] = React.useState("")
   const [visitorId, setVisitorId] = React.useState("")
+  const [hasPaid, setHasPaid] = React.useState(false)
 
   const emailValid = isValidEmail(email)
+
+  // credits_exhausted : dès que le solde connu tombe à 0.
+  React.useEffect(() => {
+    if (credits === 0) track("credits_exhausted")
+  }, [credits])
 
   const load = React.useCallback(
     async (mail: string, vid: string) => {
@@ -80,6 +89,8 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
             }
             if (typeof res.balance === "number") {
               setCredits(res.balance)
+              setHasPaid(true)
+              window.localStorage.setItem(HAS_PAID_KEY, "1")
               return
             }
           } catch {
@@ -96,8 +107,14 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
             setDeviceBlocked(!!data.device_blocked)
             if (baseline === null) {
               baseline = data.credits_remaining
-              if (baseline > 0) return
+              if (baseline > 0) {
+                setHasPaid(true)
+                window.localStorage.setItem(HAS_PAID_KEY, "1")
+                return
+              }
             } else if (data.credits_remaining > baseline) {
+              setHasPaid(true)
+              window.localStorage.setItem(HAS_PAID_KEY, "1")
               return
             }
           } catch {
@@ -118,9 +135,12 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
     const vid = getVisitorId()
     setVisitorId(vid)
 
+    if (window.localStorage.getItem(HAS_PAID_KEY) === "1") setHasPaid(true)
+
     const stored = window.localStorage.getItem(EMAIL_STORAGE_KEY)
     if (stored) {
       setEmail(stored)
+      identifyEmail(vid, stored)
       void load(stored, vid)
     }
 
@@ -158,6 +178,7 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
     if (!emailValid) return
     const normalized = email.trim().toLowerCase()
     window.localStorage.setItem(EMAIL_STORAGE_KEY, normalized)
+    identifyEmail(visitorId, normalized)
     void load(normalized, visitorId)
   }, [email, emailValid, visitorId, load])
 
@@ -168,16 +189,17 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
     // le compteur interroge exactement l'email qui a payé (et pas un ancien email
     // resté en localStorage) → plus de crédits « invisibles ».
     window.localStorage.setItem(EMAIL_STORAGE_KEY, normalized)
+    track("checkout_started")
     setBuyError("")
     setCheckoutLoading(true)
     try {
-      const { url } = await createCheckoutSession(normalized)
+      const { url } = await createCheckoutSession(normalized, visitorId)
       window.location.href = url
     } catch {
       setCheckoutLoading(false)
       setBuyError("Paiement momentanément indisponible.")
     }
-  }, [email, emailValid])
+  }, [email, emailValid, visitorId])
 
   const value: CreditsState = {
     email,
@@ -189,6 +211,7 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
     justPaid,
     paymentConfirming,
     visitorId,
+    hasPaid,
     persistAndLoad,
     buy,
     checkoutLoading,

@@ -93,3 +93,46 @@ Voir [GO_LIVE.md](GO_LIVE.md) pour la procédure complète (carte de test
 - Aucune clé Stripe côté frontend (vérifié).
 - Décrément de crédit atomique ; webhook idempotent (un paiement crédite une fois).
 - Deps API sans Streamlit/Plotly → image légère.
+
+---
+
+## 6. PostHog (analytics produit) 🧑
+
+**Clé** : PostHog → Settings → Project settings → **Project API Key** (`phc_…`,
+même clé pour front et back). **Host** (région EU) : `https://eu.i.posthog.com`.
+
+### Frontend (Vercel) 🧑
+| Variable | Valeur |
+|---|---|
+| `NEXT_PUBLIC_POSTHOG_KEY` | `phc_…` |
+| `NEXT_PUBLIC_POSTHOG_HOST` | `https://eu.i.posthog.com` |
+
+### Backend (Render) 🧑
+| Variable | Valeur |
+|---|---|
+| `POSTHOG_API_KEY` | `phc_…` (même clé) |
+| `POSTHOG_HOST` | `https://eu.i.posthog.com` |
+
+Sans ces variables, le tracking est un no-op silencieux (dev/tests non impactés).
+
+### Événements envoyés
+`landing_page_view`, `analysis_started`, `analysis_completed`, `free_credit_used`,
+`credits_exhausted`, `checkout_started` (front) · `payment_completed` (back, webhook
++ confirm). Tous reliés au même `distinct_id` = `visitor_id` (+ `identify(email)`
+dès que connu).
+
+### Dashboard "AutoCote MVP" 🧑
+Créer un dashboard dans PostHog (Dashboards → New dashboard → "AutoCote MVP") et y
+ajouter :
+1. **Un funnel** (Insights → Funnel) avec les étapes, dans l'ordre :
+   `landing_page_view` → `analysis_started` → `credits_exhausted` →
+   `checkout_started` → `payment_completed` → `paid_analysis`
+   (nécessaire pour l'étape "Analyse payante" — utiliser `analysis_started` filtré
+   sur has_paid=true, ou l'event `paid_analysis` émis directement).
+2. **Trends** simples en complément : nombre d'`analysis_completed`/jour, taux
+   `credits_exhausted` → `checkout_started` (conversion vers l'achat), nombre de
+   `payment_completed`/semaine (revenu proxy).
+3. Épingler ("Add to dashboard") chaque insight créé sur le dashboard "AutoCote MVP".
+
+Ceci se fait dans l'UI PostHog (pas d'API simple pour créer un dashboard depuis le
+code) — compter ~10 min.

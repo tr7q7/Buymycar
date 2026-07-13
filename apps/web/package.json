@@ -16,6 +16,7 @@
     "lucide-react": "^1.16.0",
     "motion": "^12.42.2",
     "next": "16.2.6",
+    "posthog-js": "^1.399.2",
     "react": "^19",
     "react-dom": "^19",
     "recharts": "3.8.0",

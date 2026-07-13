@@ -4,6 +4,7 @@
 #    s'exécuter (sharp inutile car Next est en images.unoptimized ; msw = mock dev).
 #    Sans cela, pnpm réclame une approbation interactive et échoue en CI (Vercel).
 allowBuilds:
+  core-js: false
   msw: false
   sharp: false
 #

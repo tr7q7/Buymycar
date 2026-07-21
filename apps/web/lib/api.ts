@@ -12,6 +12,7 @@ export interface SearchPayload {
   visitor_id: string
   brand: string
   model: string
+  specification: string
   fuel: string
   year_min: number
   year_max: number

@@ -93,6 +93,21 @@ def is_model_match(listing: Listing, selected_model: str) -> bool:
     return False
 
 
+def has_specification(listing: Listing, specification: str) -> bool:
+    """
+    Vrai si le texte de spécification (ex: "S-line", "AMG") apparaît dans le
+    titre de l'annonce (normalisé : casse, espaces et tirets ignorés).
+
+    Filtre strict, jamais élargi par le fallback progressif : une fois une
+    spécification demandée, seules les annonces qui la mentionnent comptent.
+    """
+    spec_norm = specification.strip().lower().replace(" ", "").replace("-", "")
+    if not spec_norm:
+        return True
+    title_norm = listing.title.lower().replace(" ", "").replace("-", "")
+    return spec_norm in title_norm
+
+
 def _filter(
     listings: List[Listing],
     brand: str,
@@ -101,6 +116,7 @@ def _filter(
     year_min: int,
     year_max: int,
     loose_model: bool = False,
+    specification: Optional[str] = None,
 ) -> List[Listing]:
     # La marque n'est jamais élargie
     result = [l for l in listings if l.brand.lower() == brand.lower()]
@@ -119,7 +135,13 @@ def _filter(
     if fuel:
         result = [l for l in result if l.fuel.lower() == fuel.lower()]
 
-    return [l for l in result if year_min <= l.year <= year_max]
+    result = [l for l in result if year_min <= l.year <= year_max]
+
+    if specification:
+        # Filtre strict sur le titre, appliqué à tous les niveaux (jamais élargi).
+        result = [l for l in result if has_specification(l, specification)]
+
+    return result
 
 
 def progressive_filter(
@@ -129,9 +151,10 @@ def progressive_filter(
     fuel: Optional[str],
     year_min: int,
     year_max: int,
+    specification: Optional[str] = None,
 ) -> FilterResult:
     # ── Niveau 1 : strict ────────────────────────────────────────────────────
-    l1 = _filter(listings, brand, model, fuel, year_min, year_max)
+    l1 = _filter(listings, brand, model, fuel, year_min, year_max, specification=specification)
     strict_count = len(l1)
 
     if strict_count >= _THRESHOLD_ENOUGH:
@@ -145,7 +168,7 @@ def progressive_filter(
 
     # ── Niveau 2 : année ±1 ──────────────────────────────────────────────────
     y2_min, y2_max = year_min - 1, year_max + 1
-    l2 = _filter(listings, brand, model, fuel, y2_min, y2_max)
+    l2 = _filter(listings, brand, model, fuel, y2_min, y2_max, specification=specification)
 
     if len(l2) >= _THRESHOLD_ENOUGH:
         return FilterResult(
@@ -157,7 +180,10 @@ def progressive_filter(
         )
 
     # ── Niveau 3 : année ±1 + modèle élargi ─────────────────────────────────
-    l3 = _filter(listings, brand, model, fuel, y2_min, y2_max, loose_model=True)
+    l3 = _filter(
+        listings, brand, model, fuel, y2_min, y2_max,
+        loose_model=True, specification=specification,
+    )
 
     return FilterResult(
         listings=l3,

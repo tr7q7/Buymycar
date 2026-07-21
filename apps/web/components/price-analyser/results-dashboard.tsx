@@ -36,6 +36,7 @@ import { PriceMileageChart } from "./price-mileage-chart"
 interface Query {
   brand: string
   model: string
+  specification?: string
   fuel: string
   yearMin: number
   yearMax: number
@@ -67,7 +68,7 @@ export function ResultsDashboard({
 
   const title = React.useMemo(() => {
     if (!query) return "Résultats de l'analyse"
-    const parts = [query.brand, query.model].filter(Boolean)
+    const parts = [query.brand, query.model, query.specification].filter(Boolean)
     const name = parts.join(" ")
     const years =
       query.yearMin === query.yearMax

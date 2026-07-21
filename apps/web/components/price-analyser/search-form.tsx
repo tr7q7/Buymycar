@@ -59,6 +59,7 @@ export function SearchForm({
 
   const [brand, setBrand] = React.useState("")
   const [model, setModel] = React.useState("")
+  const [specification, setSpecification] = React.useState("")
   const [fuel, setFuel] = React.useState("")
   const [years, setYears] = React.useState<[number, number]>([
     2018,
@@ -72,6 +73,7 @@ export function SearchForm({
   const [submittedQuery, setSubmittedQuery] = React.useState<{
     brand: string
     model: string
+    specification: string
     fuel: string
     yearMin: number
     yearMax: number
@@ -165,6 +167,7 @@ export function SearchForm({
     setSubmittedQuery({
       brand,
       model,
+      specification,
       fuel,
       yearMin: years[0],
       yearMax: years[1],
@@ -173,6 +176,7 @@ export function SearchForm({
     track("analysis_started", {
       brand,
       model,
+      specification,
       fuel,
       year_min: years[0],
       year_max: years[1],
@@ -193,6 +197,7 @@ export function SearchForm({
           visitor_id: visitorId,
           brand,
           model,
+          specification,
           fuel,
           year_min: years[0],
           year_max: years[1],
@@ -256,7 +261,7 @@ export function SearchForm({
       )
       setStatus("error")
     }
-  }, [email, visitorId, brand, model, fuel, years, credits, hasPaid, setCredits, onAnalysisComplete, stopTimers])
+  }, [email, visitorId, brand, model, specification, fuel, years, credits, hasPaid, setCredits, onAnalysisComplete, stopTimers])
 
   function handleCancel() {
     stopTimers()
@@ -393,6 +398,21 @@ export function SearchForm({
                         </SelectContent>
                       </Select>
                     )}
+                  </Field>
+
+                  {/* Spécification (texte libre, filtre le titre des annonces) */}
+                  <Field>
+                    <FieldLabel htmlFor="specification">
+                      Spécification (optionnel)
+                    </FieldLabel>
+                    <input
+                      id="specification"
+                      type="text"
+                      value={specification}
+                      onChange={(e) => setSpecification(e.target.value)}
+                      placeholder="Ex : S-line, AMG, GTI…"
+                      className="h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    />
                   </Field>
 
                   {/* Carburant */}

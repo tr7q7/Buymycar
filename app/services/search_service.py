@@ -49,11 +49,14 @@ def run_search(
     fuel: str,
     year_min: int,
     year_max: int,
+    specification: str = "",
 ) -> SearchResult:
     """
     Exécute une recherche complète et renvoie un SearchResult structuré.
 
     Comportement identique à l'ancien _fetch_piloterr de main.py.
+    `specification` (ex: "S-line", "AMG") filtre strictement sur le titre des
+    annonces, en plus de brand/model/fuel/année — jamais élargi.
     """
     params = SearchParams(
         brand=brand,
@@ -70,7 +73,10 @@ def run_search(
     raw_listings, meta = provider.fetch_with_meta()
     raw_count = len(raw_listings)
 
-    filt = progressive_filter(raw_listings, brand, model or "", fuel or "", year_min, year_max)
+    filt = progressive_filter(
+        raw_listings, brand, model or "", fuel or "", year_min, year_max,
+        specification=specification or None,
+    )
     strategy = "standard"
 
     # ── Stratégie 2 : brand seule (si échantillon strict insuffisant) ─────────
@@ -85,7 +91,10 @@ def run_search(
         seen_ids = {l.id for l in raw_listings}
         merged = raw_listings + [l for l in raw2 if l.id not in seen_ids]
 
-        filt_merged = progressive_filter(merged, brand, model or "", fuel or "", year_min, year_max)
+        filt_merged = progressive_filter(
+            merged, brand, model or "", fuel or "", year_min, year_max,
+            specification=specification or None,
+        )
 
         if len(filt_merged.listings) > len(filt.listings):
             raw_listings = merged

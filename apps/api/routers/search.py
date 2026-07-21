@@ -37,7 +37,7 @@ def create_search(req: SearchRequest, db: Session = Depends(get_db)) -> JobCreat
 
     job_id = job_manager.submit(
         run_search,
-        req.brand, req.model, req.fuel, req.year_min, req.year_max,
+        req.brand, req.model, req.fuel, req.year_min, req.year_max, req.specification,
     )
 
     # Trace la recherche (email ↔ job) pour un éventuel remboursement futur.

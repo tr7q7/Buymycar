@@ -21,6 +21,7 @@ class SearchRequest(BaseModel):
     visitor_id: str = Field("", examples=["a1b2c3"])
     brand: str = Field(..., examples=["audi"])
     model: str = Field("", examples=["rs3"])
+    specification: str = Field("", examples=["S-line"])
     fuel: str = Field(..., examples=["essence"])
     year_min: int = Field(..., ge=1990, le=2100, examples=[2018])
     year_max: int = Field(..., ge=1990, le=2100, examples=[2026])

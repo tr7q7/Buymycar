@@ -11,10 +11,53 @@ is_model_match() gère les modèles sportifs dont le champ LBC "model" diffère 
 commercial (ex: Audi RS3 encodé "a3" ou "rs_3" côté LBC → fallback sur le titre).
 """
 
+import re
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import List, Optional
 
 from app.models.listing import Listing
+
+_WORD_RE = re.compile(r"\S+")
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]")
+
+
+def _words(text: str) -> List[str]:
+    """Mots bruts (minuscules, séparés par des espaces ; tirets conservés)."""
+    return _WORD_RE.findall(text.lower())
+
+
+def _compact(word: str) -> str:
+    """Un mot sans aucune ponctuation ("s-line" -> "sline")."""
+    return _NON_ALNUM_RE.sub("", word)
+
+
+def _word_matches(spec_word: str, title_words: List[str]) -> bool:
+    """
+    Vrai si spec_word est présent dans le titre, en tolérant :
+    - la ponctuation ("s-line" ≈ "sline") ;
+    - une inclusion partielle ("amg" contenu dans un mot composé "amgline") ;
+    - une légère faute d'orthographe (mots d'au moins 4 caractères, similarité
+      ≥ 0.82 — ex: "s-ligne" ≈ "s-line").
+
+    Comparaison faite sur des MOTS entiers (jamais des fragments d'une ou deux
+    lettres) pour éviter les faux positifs (ex: "AMG" ne doit pas matcher le
+    simple "A" de "Classe A").
+    """
+    spec_c = _compact(spec_word)
+    if len(spec_c) < 2:
+        return spec_c in (_compact(t) for t in title_words)
+
+    for t in title_words:
+        t_c = _compact(t)
+        if len(t_c) < 2:
+            continue
+        if spec_c == t_c or spec_c in t_c or t_c in spec_c:
+            return True
+        if len(spec_c) >= 4 and len(t_c) >= 4:
+            if SequenceMatcher(None, spec_c, t_c).ratio() >= 0.82:
+                return True
+    return False
 
 _THRESHOLD_ENOUGH = 20   # en dessous → on tente le niveau suivant
 _THRESHOLD_WARN   = 15   # en dessous même après niveau 3 → avertissement
@@ -95,17 +138,20 @@ def is_model_match(listing: Listing, selected_model: str) -> bool:
 
 def has_specification(listing: Listing, specification: str) -> bool:
     """
-    Vrai si le texte de spécification (ex: "S-line", "AMG") apparaît dans le
-    titre de l'annonce (normalisé : casse, espaces et tirets ignorés).
+    Vrai si tous les mots de la spécification (ex: "S-line", "AMG Line") se
+    retrouvent dans le titre de l'annonce, quel que soit :
+    - la casse ;
+    - l'ordre des mots ("AMG Line" ou "Line AMG" correspondent tous les deux) ;
+    - une légère faute d'orthographe ("sline" ≈ "S-Line").
 
     Filtre strict, jamais élargi par le fallback progressif : une fois une
     spécification demandée, seules les annonces qui la mentionnent comptent.
     """
-    spec_norm = specification.strip().lower().replace(" ", "").replace("-", "")
-    if not spec_norm:
+    spec_words = _words(specification)
+    if not spec_words:
         return True
-    title_norm = listing.title.lower().replace(" ", "").replace("-", "")
-    return spec_norm in title_norm
+    title_words = _words(listing.title)
+    return all(_word_matches(w, title_words) for w in spec_words)
 
 
 def _filter(
